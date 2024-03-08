@@ -1,7 +1,7 @@
 # Neural Network Verification for Instrument Recognition
 
 ### Current status
-trained_model.onnx is a re-trained version of the `mnist_relu_4_1024.onnx` model trained for only a single epoch on the NSynth dataset for instrument recognition.
+`trained_model.onnx` is a re-trained version of the `mnist_relu_4_1024.onnx` model trained for only a single epoch on the NSynth dataset for instrument recognition.
 
 Due to its more reasonable size, only the validation set is included in the repo.
 Scripts to generate features from the other dataset splits and to train additional models are included in the `nsynth_train` folder.
