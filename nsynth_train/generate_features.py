@@ -37,6 +37,15 @@ def parse_labels(all_features:dict, jsonfile:str):
         features_and_labels[1].append(label)
     return features_and_labels
 
+def modify_features_for_verification(feature_path:str, save_path:str):
+    with open(feature_path, "rb") as fp:
+        features, labels = pickle.load(fp)
+    # add vector of ones to every feature
+    modified_features = [np.concatenate([sample, np.ones((1, sample.shape[1]))]) for sample in features]
+    with open(save_path, "wb") as fp:
+        pickle.dump((modified_features, labels), fp)
+    return modified_features, labels
+
 def make_class_map(features_and_labels):
     labels = set(features_and_labels[1])
     label_map = {label: i for i, label in tqdm(enumerate(list(labels)), desc="Creating class map...")}
