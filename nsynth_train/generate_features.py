@@ -37,16 +37,35 @@ def parse_labels(all_features:dict, jsonfile:str):
         features_and_labels[1].append(label)
     return features_and_labels
 
-def modify_features_for_verification(feature_path:str, save_path:str):
+def modify_features_for_verification(feature_path:str, save_path:str=None):
+    """Appends a column of ones to every feature matrix.
+
+    Args:
+        feature_path (str): path to saved features pickle file
+        save_path (str, optional): Path to where to save a pickle file
+            which contains the modified features. Leave empty if not desired.
+
+    Returns:
+        tuple: (modified_features, labels)
+    """
     with open(feature_path, "rb") as fp:
         features, labels = pickle.load(fp)
     # add vector of ones to every feature
     modified_features = [np.concatenate([sample, np.ones((1, sample.shape[1]))]) for sample in features]
-    with open(save_path, "wb") as fp:
-        pickle.dump((modified_features, labels), fp)
+    if save_path is not None:
+        with open(save_path, "wb") as fp:
+            pickle.dump((modified_features, labels), fp)
     return modified_features, labels
 
 def make_class_map(features_and_labels):
+    """Creates a class map for NSynth.
+
+    Args:
+        features_and_labels (tuple): tuple containing all (features, labels)
+
+    Returns:
+        dict: mapping of class names to integers
+    """
     labels = set(features_and_labels[1])
     label_map = {label: i for i, label in tqdm(enumerate(list(labels)), desc="Creating class map...")}
     return label_map
