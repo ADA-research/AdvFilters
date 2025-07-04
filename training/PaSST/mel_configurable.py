@@ -52,7 +52,7 @@ class AugmentMelSTFT(torch.nn.Module):
                                                         norm=norm,
                                                         mel_scale=mel_scale
                                                         )
-        self.preemphasis_coef = torch.Tensor([[[-.97, 1]]]).half().cuda()
+        self.preemphasis_coef = torch.Tensor([[[-.97, 1]]]).float().cuda()
         
         # Masking Params
         if freqm == 0:

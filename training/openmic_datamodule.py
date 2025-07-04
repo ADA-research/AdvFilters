@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-from utils import decode_mp3, pad_or_truncate, roll
+from training.utils import decode_mp3, pad_or_truncate, roll
     
 torch.set_float32_matmul_precision('medium')
     
@@ -62,8 +62,8 @@ class OpenMICDataset(Dataset):
     
 class OpenMICDataModule(L.LightningDataModule):
     def __init__(self, 
-                 test_hdf: str = "/storage/work/dettmer/hpo-spectrograms/openmic_hdf5s/openmic_test.csv_mp3.hdf", 
-                 train_hdf: str = "/storage/work/dettmer/hpo-spectrograms/openmic_hdf5s/openmic_train.csv_mp3.hdf",
+                 test_hdf: str = "/hpcwork/rwth1754/openmic/openmic_test.hdf5", 
+                 train_hdf: str = "/hpcwork/rwth1754/openmic/openmic_train.hdf5",
                  batch_size_train: int = 64, 
                  batch_size_test: int = 64,
                  num_workers: int = 0,

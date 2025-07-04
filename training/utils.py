@@ -52,13 +52,17 @@ def roll(x, shift_range=50):
     return x.roll(shift, 0)
     
 def masked_mean_average_precision(targets, preds, masks):
-    targets = targets.round()
-    ap_scores = []
-    for i in range(preds.shape[1]):
-        tar = targets[:, i]
-        pre = preds[:, i]
-        mas = masks[:, i]
-        ap_score = average_precision_score(tar, pre, sample_weight=mas) # Koutini et. al. 2022
-        ap_scores.append(ap_score)
-    # Return the mean of AP across all valid classes (this is mAP)
-    return np.mean(ap_scores)
+    try:
+        targets = targets.round()
+        ap_scores = []
+        for i in range(preds.shape[1]):
+            tar = targets[:, i]
+            pre = preds[:, i]
+            mas = masks[:, i]
+            ap_score = average_precision_score(tar, pre, sample_weight=mas) # Koutini et. al. 2022
+            ap_scores.append(ap_score)
+        # Return the mean of AP across all valid classes (this is mAP)
+        return np.mean(ap_scores)
+    except:
+        print("Error calculating masked mAP. Returning 0.")
+        return 0

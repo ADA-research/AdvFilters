@@ -3,7 +3,7 @@ import numpy as np
 from sklearn.metrics import average_precision_score
 
 from hear21passt.base import get_basic_model, get_model_passt
-from passt_openmic_datamodule import OpenMICDataModule
+from training.openmic_datamodule import OpenMICDataModule
 
 def _calc_accuracy(label, output, mask):
     return masked_mean_average_precision(label, 
@@ -19,7 +19,7 @@ def _was_attack_success_flip_any(label, output_before, output_after, mask):
         if pred_before[idx] == label[idx] and pred_after[idx] != label[idx]:
             return True
     return False
-    
+
 def _was_attack_success_flip_one(labels, output_after, flip_idx):
     labels_after = (output_after.squeeze() >= 0.5).int()
     return labels[flip_idx] == labels_after[flip_idx]
@@ -86,6 +86,88 @@ def run_pgd_single_sample_openmic(model, sample, labels, mask, device="cuda", al
             "pred_after": best_pred, 
             "success": success}
 
+def run_pgd_batched_openmic(model, samples, labels, mask, device="cuda", alpha=0.005, eps=0.5, max_iters=100, verbose=False):
+    if verbose:
+        print(f"running batched pgd with input size: {samples.shape}, labels: {labels.shape}, masks: {mask.shape}")
+    loss = torch.nn.functional.binary_cross_entropy_with_logits
+    batch_size, n_mels, __ = samples.shape
+    inputs_before = torch.Tensor(samples.unsqueeze(1)).to(device) # (batchsize, 1, n_mels, 1000)
+    inputs = inputs_before.clone()
+    inputs.requires_grad = True
+    model = model.to(device)
+    outputs_before = model(inputs) # (batchsize, n_labels)
+    model.zero_grad()
+    if verbose:
+        print(f"Shape of outputs_before: {outputs_before.shape}")
+    # Logging df    
+    #log = Log(outputs.detach().cpu().numpy(), labels.cpu().numpy())
+    
+    adv_filters = torch.ones((batch_size, n_mels)).uniform_(1 - eps, 1 + eps).to(device) # random init
+    outputs = outputs_before.clone()
+    for j in range(max_iters):
+        cost = loss(outputs, labels, weight=mask)
+        cost.backward()
+
+        # Create adv filter
+        row_signs = torch.sum(inputs.grad, dim=3).sign().squeeze().to(device) # Row-wise sum, then get sign, (batchsize, nmels)
+        adv_filters = torch.clamp(
+            adv_filters + row_signs * alpha, 
+            min=1-eps, max=1+eps)
+        # Apply filter, then normalise
+        inputs = (inputs_before * adv_filters.reshape((batch_size, 1, n_mels, 1)))
+        inputs.requires_grad = True
+        outputs = model(inputs)
+        model.zero_grad()
+        
+        if verbose:
+            print(f"Iteration: {j}")
+            print(f"Loss: {cost}")
+        # Not applying early stopping in batched pgd, 
+        # as we just maximise loss for adv. training
+    return {"filters": adv_filters.reshape((batch_size, 1, n_mels, 1)),
+            "perturbed_inputs": inputs}
+    
+def run_pgd_batched_openmic_flip_one(model, samples, labels, mask, device="cuda", alpha=0.005, eps=0.5, max_iters=100, verbose=False):
+    if verbose:
+        print(f"running batched pgd with input size: {samples.shape}, labels: {labels.shape}, masks: {mask.shape}")
+    loss = torch.nn.functional.binary_cross_entropy_with_logits
+    batch_size, n_mels, __ = samples.shape
+    inputs_before = torch.Tensor(samples.unsqueeze(1)).to(device) # (batchsize, 1, n_mels, 1000)
+    inputs = inputs_before.clone()
+    inputs.requires_grad = True
+    model = model.to(device)
+    outputs_before = model(inputs) # (batchsize, n_labels)
+    model.zero_grad()
+    if verbose:
+        print(f"Shape of outputs_before: {outputs_before.shape}")
+    # Logging df    
+    #log = Log(outputs.detach().cpu().numpy(), labels.cpu().numpy())
+    
+    adv_filters = torch.ones((batch_size, n_mels)).uniform_(1 - eps, 1 + eps).to(device) # random init
+    outputs = outputs_before.clone()
+    for j in range(max_iters):
+        cost = loss(outputs, labels, weight=mask)
+        cost.backward()
+
+        # Create adv filter
+        row_signs = torch.sum(inputs.grad, dim=3).sign().squeeze().to(device) # Row-wise sum, then get sign, (batchsize, nmels)
+        adv_filters = torch.clamp(
+            adv_filters + row_signs * alpha, 
+            min=1-eps, max=1+eps)
+        # Apply filter, then normalise
+        inputs = (inputs_before * adv_filters.reshape((batch_size, 1, n_mels, 1)))
+        inputs.requires_grad = True
+        outputs = model(inputs)
+        model.zero_grad()
+        
+        if verbose:
+            print(f"Iteration: {j}")
+            print(f"Loss: {cost}")
+        # Not applying early stopping in batched pgd, 
+        # as we just maximise loss for adv. training
+    return {"filters": adv_filters.reshape((batch_size, 1, n_mels, 1)),
+            "perturbed_inputs": inputs}
+    
 def run_pgd_single_sample_flip_one_openmic(model, sample, flip_idx=0, device="cuda", alpha=0.005, eps=0.5, max_iters=100, verbose=False):
     loss = torch.nn.functional.binary_cross_entropy_with_logits
     inputs = torch.Tensor(sample.unsqueeze(0)).to(device)
@@ -109,8 +191,6 @@ def run_pgd_single_sample_flip_one_openmic(model, sample, flip_idx=0, device="cu
     best_pred = outputs_before.clone()
     outputs = outputs_before.clone()
     success = False
-    if verbose:
-        print(f"DEBUG: labels shape: {labels.shape}")
     loss_weight = torch.zeros(labels.shape).to(device)
     loss_weight[flip_idx] = 1
     for j in range(max_iters):
@@ -137,7 +217,7 @@ def run_pgd_single_sample_flip_one_openmic(model, sample, flip_idx=0, device="cu
             success = True
             best_pred = outputs.clone()
             break
-    return {"filter": best_filter, 
+    return {"filters": best_filter, 
             "pred_before": outputs_before,
             "pred_after": best_pred, 
             "success": success}
