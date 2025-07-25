@@ -46,7 +46,7 @@ class PasstMasked(Passt):
         x, y, mask = batch
         y_hat = self.forward(x)
         loss = self.loss(y_hat, y, mask)
-        self.log("test_loss", loss)
+        self.log("test/loss", loss)
         self.y_hats.append(y_hat.cpu().numpy())
         self.y_trues.append(y.cpu().numpy())
         self.masks.append(mask.cpu().numpy())
@@ -57,7 +57,30 @@ class PasstMasked(Passt):
         y_trues = np.vstack(self.y_trues)
         masks = np.vstack(self.masks)
         mAP = masked_mean_average_precision(y_trues, y_hats, masks)
-        self.log("mAP", mAP)
+        self.log("test/mAP", mAP)
+        self.y_hats = []
+        self.y_trues = []
+        self.masks = []
+        
+    def validation_step(self, batch, batch_idx):
+        x, y, mask = batch
+        y_hat = self.forward(x)
+        loss = self.loss(y_hat, y, mask)
+        self.log("val/loss", loss)
+        self.y_hats.append(y_hat.cpu().numpy())
+        self.y_trues.append(y.cpu().numpy())
+        self.masks.append(mask.cpu().numpy())
+        return {"y_hat": y_hat, "y": y, "mask": mask}
+
+    def on_validation_epoch_end(self):
+        y_hats = np.vstack(self.y_hats)
+        y_trues = np.vstack(self.y_trues)
+        masks = np.vstack(self.masks)
+        mAP = masked_mean_average_precision(y_trues, y_hats, masks)
+        self.log("val/mAP", mAP)
+        self.y_hats = []
+        self.y_trues = []
+        self.masks = []
 
 if __name__ == "__main__":
     cli = LightningCLI(PasstMasked, OpenMICDataModule)

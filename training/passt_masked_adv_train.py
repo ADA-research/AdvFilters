@@ -8,10 +8,6 @@ from training.openmic_datamodule import OpenMICDataModule
 from training.passt_masked import PasstMasked
 from training.utils import masked_mean_average_precision
 
-ALPHA = 0.01
-EPS = 0.1
-MAX_ITERS_PGD = 100
-
 def masked_bce_loss(y_hat, y_true, mask):
     samples_loss = torch.nn.functional.binary_cross_entropy_with_logits(
         y_hat, y_true, reduction="none"
@@ -28,9 +24,15 @@ class PasstMaskedAdv(PasstMasked):
                  lr = 0.00001, 
                  s_patchout_t = 40, 
                  s_patchout_f = 4, 
+                 pgd_alpha = 0.001,
+                 pgd_eps = 0.01,
+                 pgd_steps = 10,
                  *args, **kwargs):
         super().__init__(pretrained_arch, num_classes, lr, s_patchout_t, s_patchout_f, *args, **kwargs)
         self.loss = masked_bce_loss
+        self.pgd_alpha = pgd_alpha
+        self.pgd_eps = pgd_eps
+        self.pgd_steps = pgd_steps
         
     def forward(self, x):
         return self.passt(x)[0]
@@ -42,43 +44,63 @@ class PasstMaskedAdv(PasstMasked):
                                 samples=x,
                                 labels=y,
                                 mask=mask,
-                                alpha=ALPHA,
-                                eps=EPS,
-                                max_iters=MAX_ITERS_PGD,
+                                alpha=self.pgd_alpha,
+                                eps=self.pgd_eps,
+                                max_iters=self.pgd_steps,
                                 verbose=False)
         x_perturb = pgd_res["perturbed_inputs"]
         y_hat = self.forward(x_perturb)
         loss = self.loss(y_hat, y, mask)
-        self.log("train_loss", loss)
+        self.log("train/loss", loss)
         return loss
 
     def test_step(self, batch, batch_idx):
         """x, y, mask = batch
         x = self.mel(x)"""
-        batch[0] = self.mel(batch[0]).unsqueeze(1)
-        super().test_step(batch, batch_idx)
-        # Calc robust acc.
-        
-        """
+        #batch[0] = self.mel(batch[0]).unsqueeze(1)
+        # Calc loss and log results for mAP
         x, y, mask = batch
+        x = self.mel(x).unsqueeze(1)
         y_hat = self.forward(x)
         loss = self.loss(y_hat, y, mask)
-        self.log("test_loss", loss)
-        return {"y_hat": y_hat, "y": y, "mask": mask}"""
-"""
-    def test_epoch_end(self, outputs):
-        y_hats = []
-        y_trues = []
-        masks = []
-        for res in outputs:
-            y_hats.append(torch.sigmoid(res["y_hat"]).cpu().numpy())
-            y_trues.append(res["y"].cpu().numpy())
-            masks.append(res["mask"].cpu().numpy())
-        y_hats = np.vstack(y_hats)
-        y_trues = np.vstack(y_trues)
-        masks = np.vstack(masks)
+        self.log("test/loss", loss)
+        self.y_hats.append(y_hat.cpu().numpy())
+        self.y_trues.append(y.cpu().numpy())
+        self.masks.append(mask.cpu().numpy())
+        return {"y_hat": y_hat, "y": y, "mask": mask}
+    
+    def on_test_epoch_end(self):
+        y_hats = np.vstack(self.y_hats)
+        y_trues = np.vstack(self.y_trues)
+        masks = np.vstack(self.masks)
         mAP = masked_mean_average_precision(y_trues, y_hats, masks)
-        self.log("mAP", mAP)"""
+        self.log("test/mAP", mAP)
+        self.y_hats = []
+        self.y_trues = []
+        self.masks = []
+
+    def validation_step(self, batch, batch_idx):
+        #batch[0] = self.mel(batch[0]).unsqueeze(1)
+        # Calc loss and log results for mAP
+        x, y, mask = batch
+        x = self.mel(x).unsqueeze(1)
+        y_hat = self.forward(x)
+        loss = self.loss(y_hat, y, mask)
+        self.log("val/loss", loss)
+        self.y_hats.append(y_hat.cpu().numpy())
+        self.y_trues.append(y.cpu().numpy())
+        self.masks.append(mask.cpu().numpy())
+        return {"y_hat": y_hat, "y": y, "mask": mask}
+
+    def on_validation_epoch_end(self):
+        y_hats = np.vstack(self.y_hats)
+        y_trues = np.vstack(self.y_trues)
+        masks = np.vstack(self.masks)
+        mAP = masked_mean_average_precision(y_trues, y_hats, masks)
+        self.log("val/mAP", mAP)
+        self.y_hats = []
+        self.y_trues = []
+        self.masks = []
 
 if __name__ == "__main__":
-    cli = LightningCLI(PasstMasked, OpenMICDataModule)
+    cli = LightningCLI(PasstMasked, OpenMICDataModule, save_config_kwargs={"overwrite": True})

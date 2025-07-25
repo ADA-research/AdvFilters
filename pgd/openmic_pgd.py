@@ -24,6 +24,15 @@ def _was_attack_success_flip_one(labels, output_after, flip_idx):
     labels_after = (output_after.squeeze() >= 0.5).int()
     return labels[flip_idx] == labels_after[flip_idx]
 
+def _flip_labels(model_outputs:torch.Tensor):
+    """Chooses the model outputs that are easiest to flip based on their
+    absolute distance to 0.5
+    """
+    flip_distances = (model_outputs.detach().cpu() - 0.5).abs().numpy() # Need to use numpy due to torch issue #55027
+    print(f"DEBUG: {flip_distances}")
+    flip_idx = flip_distances.argmin(axis=1)
+    return flip_idx
+
 def masked_mean_average_precision(targets, preds, masks):
     targets = targets.round()
     ap_scores = []
@@ -127,7 +136,7 @@ def run_pgd_batched_openmic(model, samples, labels, mask, device="cuda", alpha=0
     return {"filters": adv_filters.reshape((batch_size, 1, n_mels, 1)),
             "perturbed_inputs": inputs}
     
-def run_pgd_batched_openmic_flip_one(model, samples, labels, mask, device="cuda", alpha=0.005, eps=0.5, max_iters=100, verbose=False):
+def run_pgd_batched_flip_one_openmic(model, samples, labels, mask, device="cuda", alpha=0.005, eps=0.5, max_iters=100, verbose=False):
     if verbose:
         print(f"running batched pgd with input size: {samples.shape}, labels: {labels.shape}, masks: {mask.shape}")
     loss = torch.nn.functional.binary_cross_entropy_with_logits
@@ -137,11 +146,19 @@ def run_pgd_batched_openmic_flip_one(model, samples, labels, mask, device="cuda"
     inputs.requires_grad = True
     model = model.to(device)
     outputs_before = model(inputs) # (batchsize, n_labels)
+    if type(outputs_before) is tuple:
+        outputs_before = outputs_before[0]
+    flip_idx = _flip_labels(outputs_before)
+    if verbose:
+        print(flip_idx)
+    labels[flip_idx] = labels[flip_idx] * -1 + 1 # Flip labels
     model.zero_grad()
     if verbose:
         print(f"Shape of outputs_before: {outputs_before.shape}")
-    # Logging df    
-    #log = Log(outputs.detach().cpu().numpy(), labels.cpu().numpy())
+    # Store everything to find successes later
+    all_filters = []
+    all_perturbs = []
+    all_outputs = []
     
     adv_filters = torch.ones((batch_size, n_mels)).uniform_(1 - eps, 1 + eps).to(device) # random init
     outputs = outputs_before.clone()
@@ -152,8 +169,8 @@ def run_pgd_batched_openmic_flip_one(model, samples, labels, mask, device="cuda"
         # Create adv filter
         row_signs = torch.sum(inputs.grad, dim=3).sign().squeeze().to(device) # Row-wise sum, then get sign, (batchsize, nmels)
         adv_filters = torch.clamp(
-            adv_filters + row_signs * alpha, 
-            min=1-eps, max=1+eps)
+            adv_filters - row_signs * alpha, 
+            min=1-eps, max=1+eps) # Sign is minus here for flip one!
         # Apply filter, then normalise
         inputs = (inputs_before * adv_filters.reshape((batch_size, 1, n_mels, 1)))
         inputs.requires_grad = True
@@ -165,8 +182,24 @@ def run_pgd_batched_openmic_flip_one(model, samples, labels, mask, device="cuda"
             print(f"Loss: {cost}")
         # Not applying early stopping in batched pgd, 
         # as we just maximise loss for adv. training
+        # and evaluate successes after max_iters
+        all_filters.append(adv_filters)
+        all_perturbs.append(inputs.clone().detach())
+        all_outputs.append(outputs.clone().detach())
+        
+    # Evaluate successes
+    idx_vec = torch.Tensor([list(range(batch_size)), flip_idx])
+    all_flips = [0] * batch_size
+    for i, outputs in enumerate(all_outputs):
+        preds = outputs.round()
+        preds_before = outputs_before.round()
+        flips = (preds[idx_vec] != preds_before[idx_vec]).nonzero()
+        for flip in flips:
+            all_flips[flip] = 1   
+    
     return {"filters": adv_filters.reshape((batch_size, 1, n_mels, 1)),
-            "perturbed_inputs": inputs}
+            "perturbed_inputs": inputs,
+            "successes": sum(all_flips)}
     
 def run_pgd_single_sample_flip_one_openmic(model, sample, flip_idx=0, device="cuda", alpha=0.005, eps=0.5, max_iters=100, verbose=False):
     loss = torch.nn.functional.binary_cross_entropy_with_logits

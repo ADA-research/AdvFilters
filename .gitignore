@@ -2,3 +2,5 @@
 .DS_STORE
 __pycache__
 /aam_inference/
+/wandb_runs/
+/lightning_logs/

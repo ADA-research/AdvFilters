@@ -1,0 +1,81 @@
+# pytorch_lightning==2.4.0
+seed_everything: 0
+trainer:
+  accelerator: auto
+  strategy: auto
+  devices: auto
+  num_nodes: 1
+  precision: null
+  logger: null
+  callbacks: null
+  fast_dev_run: false
+  max_epochs: null
+  min_epochs: null
+  max_steps: -1
+  min_steps: null
+  max_time: null
+  limit_train_batches: null
+  limit_val_batches: null
+  limit_test_batches: null
+  limit_predict_batches: null
+  overfit_batches: 0.0
+  val_check_interval: null
+  check_val_every_n_epoch: 1
+  num_sanity_val_steps: null
+  log_every_n_steps: null
+  enable_checkpointing: null
+  enable_progress_bar: null
+  enable_model_summary: null
+  accumulate_grad_batches: 1
+  gradient_clip_val: null
+  gradient_clip_algorithm: null
+  deterministic: null
+  benchmark: null
+  inference_mode: true
+  use_distributed_sampler: true
+  profiler: null
+  detect_anomaly: false
+  barebones: false
+  plugins: null
+  sync_batchnorm: false
+  reload_dataloaders_every_n_epochs: 0
+  default_root_dir: null
+  logger:
+  - class_path: pytorch_lightning.loggers.WandbLogger
+    init_args:
+      project: "openmic_advtrain"
+      name: "test_run"
+      log_model: true
+      save_dir: wandb_runs
+model:
+  pretrained_arch: null
+  num_classes: 20
+  lr: 1.0e-05
+  s_patchout_t: 40
+  s_patchout_f: 4
+  n_mels: 128
+  sr: 32000
+  win_length: 800
+  hop_size: 320
+  n_fft: 1024
+  freqm: 48
+  timem: 192
+  htk: true
+  f_min: 0.0
+  f_max: null
+  window_fn: hann
+  power: 2
+  normalized: false
+  center: true
+  pad_mode: reflect
+data:
+  test_hdf: /hpcwork/rwth1754/openmic/openmic_test.hdf5
+  train_hdf: /hpcwork/rwth1754/openmic/openmic_train.hdf5
+  batch_size_train: 64
+  batch_size_test: 64
+  num_workers: 20
+  sample_rate: 32000
+  debug: false
+optimizer: null
+lr_scheduler: null
+ckpt_path: null

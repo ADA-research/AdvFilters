@@ -3,7 +3,7 @@ import torch
 import numpy as np
 
 from hear21passt.base import get_basic_model, get_model_passt
-from pgd.openmic_pgd import run_pgd_batched_openmic, _calc_accuracy
+from pgd.openmic_pgd import run_pgd_batched_flip_one_openmic, _calc_accuracy
 from training.openmic_datamodule import OpenMICDataModule
 
 ex = Experiment("openmic_pgd")
@@ -45,7 +45,7 @@ def automain(_run, eps, max_iters, alpha, verbose):
     found_filters = []
     for x, y, mask in loader:
         spec = model.mel(x.to(device))
-        res = run_pgd_batched_openmic(model.net, 
+        res = run_pgd_batched_flip_one_openmic(model.net, 
                                             spec, 
                                             y.to(device), 
                                             mask.to(device), 
