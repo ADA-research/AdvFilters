@@ -34,6 +34,8 @@ class PasstMaskedAdv(PasstMasked):
         self.pgd_eps = pgd_eps
         self.pgd_steps = pgd_steps
         
+        self.save_hyperparameters()
+        
     def forward(self, x):
         return self.passt(x)[0]
 

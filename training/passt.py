@@ -50,6 +50,8 @@ class Passt(L.LightningModule):
         self.lr = lr
         self.loss = torch.nn.functional.binary_cross_entropy_with_logits
         
+        self.save_hyperparameters()
+        
     def forward(self, x):
         x = self.mel(x)
         x = self.passt(x.unsqueeze(1))

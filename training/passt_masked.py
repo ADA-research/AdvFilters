@@ -39,7 +39,7 @@ class PasstMasked(Passt):
         x, y, mask = batch
         y_hat = self.forward(x)
         loss = self.loss(y_hat, y, mask)
-        self.log("train_loss", loss)
+        self.log("train/loss", loss)
         return loss
 
     def test_step(self, batch, batch_idx):

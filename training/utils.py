@@ -1,8 +1,10 @@
 import av
 import io
 import numpy as np
+import logging
 from sklearn.metrics import average_precision_score
 import torch
+from torchaudio.functional import gain
 
 def decode_mp3(mp3_arr):
     """
@@ -50,11 +52,15 @@ def mixup(dataset, x, y, beta=2, rate=0.5):
 def roll(x, shift_range=50):
     shift = int(np.random.random_integers(-shift_range, shift_range))
     return x.roll(shift, 0)
+
+def gain_adjust(x, db_range=7):
+    shift = np.random.uniform(low=-db_range, high=db_range, size=(1,))
+    return gain(x, shift)
     
 def masked_mean_average_precision(targets, preds, masks):
+    targets = targets.round()
+    ap_scores = []
     try:
-        targets = targets.round()
-        ap_scores = []
         for i in range(preds.shape[1]):
             tar = targets[:, i]
             pre = preds[:, i]
@@ -62,7 +68,8 @@ def masked_mean_average_precision(targets, preds, masks):
             ap_score = average_precision_score(tar, pre, sample_weight=mas) # Koutini et. al. 2022
             ap_scores.append(ap_score)
         # Return the mean of AP across all valid classes (this is mAP)
-        return np.mean(ap_scores)
-    except:
-        print("Error calculating masked mAP. Returning 0.")
-        return 0
+    except IndexError as e:
+        logger = logging.getLogger()
+        logger.error(e)
+        logger.error("Returning mAP=0")
+    return np.mean(ap_scores)
