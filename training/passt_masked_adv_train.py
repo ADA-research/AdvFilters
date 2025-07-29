@@ -3,7 +3,7 @@ from pytorch_lightning.cli import LightningCLI
 from sklearn.metrics import average_precision_score
 import torch
 
-from pgd.openmic_pgd import run_pgd_batched_openmic
+from pgd.openmic_pgd import run_pgd_batched_openmic, run_pgd_batched_flip_one_openmic
 from training.openmic_datamodule import OpenMICDataModule
 from training.passt_masked import PasstMasked
 from training.utils import masked_mean_average_precision
@@ -33,6 +33,8 @@ class PasstMaskedAdv(PasstMasked):
         self.pgd_alpha = pgd_alpha
         self.pgd_eps = pgd_eps
         self.pgd_steps = pgd_steps
+        self.pgd_successes = 0
+        self.pgd_failures = 0
         
         self.save_hyperparameters()
         
@@ -60,9 +62,22 @@ class PasstMaskedAdv(PasstMasked):
         """x, y, mask = batch
         x = self.mel(x)"""
         #batch[0] = self.mel(batch[0]).unsqueeze(1)
-        # Calc loss and log results for mAP
         x, y, mask = batch
-        x = self.mel(x).unsqueeze(1)
+        x = self.mel(x)
+        # Calc adversarial accuracy
+        with torch.inference_mode(False):
+            pgd_res = run_pgd_batched_flip_one_openmic(self,
+                                    samples=x.clone(),
+                                    labels=y.clone(),
+                                    mask=mask.clone(),
+                                    alpha=self.pgd_alpha,
+                                    eps=self.pgd_eps,
+                                    max_iters=self.pgd_steps,
+                                    verbose=True)
+            self.pgd_successes += pgd_res["successes"]
+            self.pgd_failures += pgd_res["failures"]
+        # Calc loss and log results for mAP
+        x = x.unsqueeze(1)
         y_hat = self.forward(x)
         loss = self.loss(y_hat, y, mask)
         self.log("test/loss", loss)
@@ -77,21 +92,38 @@ class PasstMaskedAdv(PasstMasked):
         masks = np.vstack(self.masks)
         mAP = masked_mean_average_precision(y_trues, y_hats, masks)
         self.log("test/mAP", mAP)
+        self.log("test/pgd_flipone_success_rate", self.pgd_successes / (self.pgd_successes + self.pgd_failures))
         self.y_hats = []
         self.y_trues = []
         self.masks = []
+        self.pgd_successes = 0
+        self.pgd_failures = 0
 
     def validation_step(self, batch, batch_idx):
-        #batch[0] = self.mel(batch[0]).unsqueeze(1)
         # Calc loss and log results for mAP
         x, y, mask = batch
-        x = self.mel(x).unsqueeze(1)
+        x = self.mel(x)
+        # Calc adversarial accuracy
+        with torch.inference_mode(False):
+            pgd_res = run_pgd_batched_flip_one_openmic(self,
+                                    samples=x,
+                                    labels=y,
+                                    mask=mask,
+                                    alpha=self.pgd_alpha,
+                                    eps=self.pgd_eps,
+                                    max_iters=self.pgd_steps,
+                                    verbose=True)
+            self.pgd_successes += pgd_res["successes"]
+            self.pgd_failures += pgd_res["failures"]
+        
+        x = x.unsqueeze(1)
         y_hat = self.forward(x)
         loss = self.loss(y_hat, y, mask)
         self.log("val/loss", loss)
         self.y_hats.append(y_hat.cpu().numpy())
         self.y_trues.append(y.cpu().numpy())
         self.masks.append(mask.cpu().numpy())
+        
         return {"y_hat": y_hat, "y": y, "mask": mask}
 
     def on_validation_epoch_end(self):
@@ -100,9 +132,11 @@ class PasstMaskedAdv(PasstMasked):
         masks = np.vstack(self.masks)
         mAP = masked_mean_average_precision(y_trues, y_hats, masks)
         self.log("val/mAP", mAP)
+        self.log("val/pgd_flipone_success_rate", self.pgd_successes / (self.pgd_successes + self.pgd_failures))
         self.y_hats = []
         self.y_trues = []
         self.masks = []
-
+        self.pgd_successes = 0
+        self.pgd_failures = 0
 if __name__ == "__main__":
     cli = LightningCLI(PasstMasked, OpenMICDataModule, save_config_kwargs={"overwrite": True})

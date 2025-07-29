@@ -6,9 +6,7 @@ from hear21passt.base import get_basic_model, get_model_passt
 from training.openmic_datamodule import OpenMICDataModule
 
 def _calc_accuracy(label, output, mask):
-    return masked_mean_average_precision(label, 
-                                         output, 
-                                         mask)
+    return masked_mean_average_precision(label, output, mask)
 
 def _was_attack_success_flip_any(label, output_before, output_after, mask):
     pred_before = (output_before > 0.5)[0]
@@ -24,12 +22,11 @@ def _was_attack_success_flip_one(labels, output_after, flip_idx):
     labels_after = (output_after.squeeze() >= 0.5).int()
     return labels[flip_idx] == labels_after[flip_idx]
 
-def _flip_labels(model_outputs:torch.Tensor):
+def _choose_labels(model_outputs:torch.Tensor):
     """Chooses the model outputs that are easiest to flip based on their
     absolute distance to 0.5
     """
-    flip_distances = (model_outputs.detach().cpu() - 0.5).abs().numpy() # Need to use numpy due to torch issue #55027
-    print(f"DEBUG: {flip_distances}")
+    flip_distances = (model_outputs.detach() - 0.5).abs()
     flip_idx = flip_distances.argmin(axis=1)
     return flip_idx
 
@@ -52,11 +49,7 @@ def run_pgd_single_sample_openmic(model, sample, labels, mask, device="cuda", al
     model = model.to(device)
     outputs_before = model(inputs)[0]
     model.zero_grad()
-        
-    # Logging df    
-    #log = Log(outputs.detach().cpu().numpy(), labels.cpu().numpy())
     
-    #adv_filter = torch.ones(inputs.shape[1]).to(device) # TODO: random init, get acc for step=0
     adv_filter = torch.Tensor(inputs.shape[2]).uniform_(1 - eps, 1 + eps).to(device) # random init
     best_filter = adv_filter
     best_pred = outputs_before.clone()
@@ -78,10 +71,6 @@ def run_pgd_single_sample_openmic(model, sample, labels, mask, device="cuda", al
         outputs = model(inputs)[0]
         model.zero_grad()
          
-        # Logging    
-        """log.log_step(cost.detach().cpu().item(),
-                     acc_current.cpu().item())"""
-        #log.log_extra(adv_filter.detach().cpu().numpy())
         if verbose:
             print(f"Iteration: {j}")
         # Early stopping
@@ -108,8 +97,6 @@ def run_pgd_batched_openmic(model, samples, labels, mask, device="cuda", alpha=0
     model.zero_grad()
     if verbose:
         print(f"Shape of outputs_before: {outputs_before.shape}")
-    # Logging df    
-    #log = Log(outputs.detach().cpu().numpy(), labels.cpu().numpy())
     
     adv_filters = torch.ones((batch_size, n_mels)).uniform_(1 - eps, 1 + eps).to(device) # random init
     outputs = outputs_before.clone()
@@ -136,70 +123,82 @@ def run_pgd_batched_openmic(model, samples, labels, mask, device="cuda", alpha=0
     return {"filters": adv_filters.reshape((batch_size, 1, n_mels, 1)),
             "perturbed_inputs": inputs}
     
-def run_pgd_batched_flip_one_openmic(model, samples, labels, mask, device="cuda", alpha=0.005, eps=0.5, max_iters=100, verbose=False):
+def run_pgd_batched_flip_one_openmic(model:torch.nn.Module, samples, labels, mask, device="cuda", alpha=0.005, eps=0.5, max_iters=100, restarts=1, verbose=False):
     if verbose:
         print(f"running batched pgd with input size: {samples.shape}, labels: {labels.shape}, masks: {mask.shape}")
     loss = torch.nn.functional.binary_cross_entropy_with_logits
     batch_size, n_mels, __ = samples.shape
-    inputs_before = torch.Tensor(samples.unsqueeze(1)).to(device) # (batchsize, 1, n_mels, 1000)
-    inputs = inputs_before.clone()
-    inputs.requires_grad = True
+    found_filters = [[]] * batch_size
+    successful_flips = [0] * batch_size
     model = model.to(device)
-    outputs_before = model(inputs) # (batchsize, n_labels)
-    if type(outputs_before) is tuple:
-        outputs_before = outputs_before[0]
-    flip_idx = _flip_labels(outputs_before)
-    if verbose:
-        print(flip_idx)
-    labels[flip_idx] = labels[flip_idx] * -1 + 1 # Flip labels
-    model.zero_grad()
-    if verbose:
-        print(f"Shape of outputs_before: {outputs_before.shape}")
-    # Store everything to find successes later
-    all_filters = []
-    all_perturbs = []
-    all_outputs = []
     
-    adv_filters = torch.ones((batch_size, n_mels)).uniform_(1 - eps, 1 + eps).to(device) # random init
-    outputs = outputs_before.clone()
-    for j in range(max_iters):
-        cost = loss(outputs, labels, weight=mask)
-        cost.backward()
-
-        # Create adv filter
-        row_signs = torch.sum(inputs.grad, dim=3).sign().squeeze().to(device) # Row-wise sum, then get sign, (batchsize, nmels)
-        adv_filters = torch.clamp(
-            adv_filters - row_signs * alpha, 
-            min=1-eps, max=1+eps) # Sign is minus here for flip one!
-        # Apply filter, then normalise
-        inputs = (inputs_before * adv_filters.reshape((batch_size, 1, n_mels, 1)))
-        inputs.requires_grad = True
-        outputs = model(inputs)
+    for restart_idx in range(restarts):
+        # Clear memory
         model.zero_grad()
+        torch.cuda.empty_cache()
+        # Store everything to find successes later
+        all_filters = []
+        all_perturbs = []
+        all_outputs = []
         
+        inputs_before = torch.Tensor(samples.unsqueeze(1)).to(device) # (batchsize, 1, n_mels, 1000)
+        inputs = inputs_before.clone()
+        inputs.requires_grad = True
+        outputs_before = model(inputs) # (batchsize, n_labels)
+        if type(outputs_before) is tuple:
+            outputs_before = outputs_before[0]
+        flip_idx = _choose_labels(outputs_before)
         if verbose:
-            print(f"Iteration: {j}")
-            print(f"Loss: {cost}")
-        # Not applying early stopping in batched pgd, 
-        # as we just maximise loss for adv. training
-        # and evaluate successes after max_iters
-        all_filters.append(adv_filters)
-        all_perturbs.append(inputs.clone().detach())
-        all_outputs.append(outputs.clone().detach())
+            print(flip_idx)
+        labels[np.arange(batch_size), flip_idx] = labels[np.arange(batch_size), flip_idx] * -1 + 1 # Flip labels
+        model.zero_grad()
+        if verbose:
+            print(f"Shape of outputs_before: {outputs_before.shape}")
         
-    # Evaluate successes
-    idx_vec = torch.Tensor([list(range(batch_size)), flip_idx])
-    all_flips = [0] * batch_size
-    for i, outputs in enumerate(all_outputs):
-        preds = outputs.round()
-        preds_before = outputs_before.round()
-        flips = (preds[idx_vec] != preds_before[idx_vec]).nonzero()
-        for flip in flips:
-            all_flips[flip] = 1   
+        adv_filters = torch.ones((batch_size, n_mels)).uniform_(1 - eps, 1 + eps).to(device) # random init
+        outputs = outputs_before.clone()
+        for iter_idx in range(max_iters):
+            cost = loss(outputs, labels, weight=mask)
+            cost.backward()
+
+            # Create adv filter
+            row_signs = torch.sum(inputs.grad, dim=3).sign().squeeze().to(device) # Row-wise sum, then get sign, (batchsize, nmels)
+            adv_filters = torch.clamp(
+                adv_filters - row_signs * alpha, # Sign is minus here for flip one!
+                min=1-eps, max=1+eps) 
+            # Apply filter, then normalise
+            inputs = (inputs_before * adv_filters.reshape((batch_size, 1, n_mels, 1)))
+            inputs.requires_grad = True
+            outputs = model(inputs)
+            if type(outputs) is tuple:
+                outputs = outputs[0] # Default PaSST returns a tuple of (preds, encodings)
+            model.zero_grad()
+            
+            if verbose:
+                print(f"Iteration: {iter_idx}")
+                print(f"Loss: {cost}")
+            # Not applying early stopping in batched pgd, 
+            # as we just maximise loss for adv. training
+            # and evaluate successes after max_iters
+            all_filters.append(adv_filters.cpu())
+            all_perturbs.append(inputs.clone().detach().cpu())
+            all_outputs.append(outputs.clone().detach().cpu())
+        # Evaluate successes
+        for iter_idx, batch_outputs in enumerate(all_outputs):
+            for sample_idx, output in enumerate(batch_outputs):
+                success = _was_attack_success_flip_one(labels[sample_idx], output, flip_idx[sample_idx])
+                if success:
+                    successful_flips[sample_idx] = 1
+                    found_filters.append(all_filters[iter_idx][sample_idx])
+                    if verbose:
+                        print(f"Success. Restart: {restart_idx}, Iteration: {iter_idx}, Sample index: {sample_idx}, Flipped label {flip_idx[sample_idx]}.")
     
-    return {"filters": adv_filters.reshape((batch_size, 1, n_mels, 1)),
-            "perturbed_inputs": inputs,
-            "successes": sum(all_flips)}
+        del inputs, inputs_before, outputs, outputs_before, adv_filters, all_filters, all_perturbs, all_outputs
+        
+    return {"filters": found_filters,
+            #"perturbed_inputs": inputs,
+            "successes": sum(successful_flips),
+            "failures": batch_size - sum(successful_flips)}
     
 def run_pgd_single_sample_flip_one_openmic(model, sample, flip_idx=0, device="cuda", alpha=0.005, eps=0.5, max_iters=100, verbose=False):
     loss = torch.nn.functional.binary_cross_entropy_with_logits
@@ -215,10 +214,6 @@ def run_pgd_single_sample_flip_one_openmic(model, sample, flip_idx=0, device="cu
     labels[flip_idx] = (labels[flip_idx] + 1) % 2 # Flip label
     labels = labels.float().to(device)
     
-    # Logging df    
-    #log = Log(outputs.detach().cpu().numpy(), labels.cpu().numpy())
-    
-    #adv_filter = torch.ones(inputs.shape[1]).to(device) # TODO: random init, get acc for step=0
     adv_filter = torch.Tensor(inputs.shape[2]).uniform_(1 - eps, 1 + eps).to(device) # random init
     best_filter = adv_filter
     best_pred = outputs_before.clone()
@@ -260,7 +255,7 @@ if __name__ == "__main__":
     model.net = get_model_passt(arch="openmic",  n_classes=20)
     model.eval()
 
-    dm = OpenMICDataModule(batch_size=1)
+    dm = OpenMICDataModule(batch_size_test=4, debug=True)
     dm.setup("test")
     loader = dm.test_dataloader()
 
@@ -268,6 +263,7 @@ if __name__ == "__main__":
         device = "cuda"
     else:
         device = "cpu"
+        
     model.to(device)
     print(f"model is on {model.device()}")
     
@@ -279,7 +275,10 @@ if __name__ == "__main__":
     all_masks = []
     for x, y, mask in loader:
         spec = model.mel(x.to(device))
-        res = run_pgd_single_sample_openmic(model.net, spec, y.to(device), mask.to(device), eps=0.5, alpha=0.005)
+        res = run_pgd_batched_flip_one_openmic(model.net, spec, y.to(device), mask.to(device), device=device, eps=0.5, alpha=0.005, verbose=True, max_iters=50)
+        print(res)
+        break
+        """
         if res["success"]:
             successes += 1
             print("success")
@@ -301,5 +300,5 @@ if __name__ == "__main__":
         torch.Tensor(all_preds_after), 
         torch.Tensor(all_masks))
     print(f"Successes: {successes}\nFailures{failures}")
-    print(f"mAP before: {mAP_before}, mAP after: {mAP_after}")
+    print(f"mAP before: {mAP_before}, mAP after: {mAP_after}")"""
     
