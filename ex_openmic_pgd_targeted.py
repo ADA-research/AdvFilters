@@ -4,7 +4,7 @@ import numpy as np
 
 from hear21passt.base import get_basic_model, get_model_passt
 from pgd.openmic_pgd import run_pgd_single_sample_flip_one_openmic, _calc_accuracy
-from training.openmic_datamodule import OpenMICDataModule
+from data.openmic_datamodule import OpenMICDataModule
 
 ex = Experiment("openmic_pgd_flip_one_easy")
 

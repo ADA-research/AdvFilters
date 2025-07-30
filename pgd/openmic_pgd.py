@@ -3,7 +3,7 @@ import numpy as np
 from sklearn.metrics import average_precision_score
 
 from hear21passt.base import get_basic_model, get_model_passt
-from training.openmic_datamodule import OpenMICDataModule
+from data.openmic_datamodule import OpenMICDataModule
 
 def _calc_accuracy(label, output, mask):
     return masked_mean_average_precision(label, output, mask)
