@@ -1,12 +1,11 @@
 from training.PaSST.passt import PaSST, PatchEmbed, get_model
 from training.PaSST.mel_configurable import AugmentMelSTFT
-#from audioset_datamodule import AudioSetDataModule
 
 import numpy as np
 import pytorch_lightning as L
 from pytorch_lightning.cli import LightningCLI
 import torch
-from sklearn.metrics import average_precision_score
+from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_score
 
 class Passt(L.LightningModule):
     def __init__(self, 
@@ -33,8 +32,6 @@ class Passt(L.LightningModule):
                  *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         
-        #TODO Read HPO config
-        
         # Load Pretrained
         if pretrained_arch is not None:
             self.passt = get_model(arch=pretrained_arch, pretrained=True, n_classes=num_classes)
@@ -50,6 +47,15 @@ class Passt(L.LightningModule):
         self.lr = lr
         self.loss = torch.nn.functional.binary_cross_entropy_with_logits
         
+        self.metrics = {
+            "accuracy": accuracy_score,
+            "recall": recall_score,
+            "precision": precision_score,
+            "f1": f1_score
+        }
+        self.y_hats = []
+        self.y_trues = []
+        
         self.save_hyperparameters()
         
     def forward(self, x):
@@ -61,45 +67,35 @@ class Passt(L.LightningModule):
         x, y = batch
         y_hat = self.forward(x)
         loss = self.loss(y_hat, y)
-        self.log("train_loss", loss)
+        self.log("train/loss", loss)
         return loss
 
     def test_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self.forward(x)
         loss = self.loss(y_hat, y)
-        self.log("test_loss", loss)
-        return {"y_hat": y_hat, "y": y}
+        self.log("test/loss", loss)
+        self.y_hats.append(torch.softmax(y_hat))
+        self.y_trues.append(y)
+        return {"y_hat": y_hat, "y": y, "loss": loss}
 
     def on_test_epoch_end(self):
-        y_hats = []
-        y_trues = []
-        for res in outputs:
-            y_hats.append(torch.sigmoid(res["y_hat"]).cpu().numpy())
-            y_trues.append(res["y"].cpu().numpy())
-        y_hats = np.vstack(y_hats)
-        y_trues = np.vstack(y_trues)
-        mAP = np.array([
-            average_precision_score(y_trues[:, i],
-                                    y_hats[:, i]) for i in range(y_trues.shape[1])
-        ]).mean()
-        self.log("mAP", mAP)
+        for metric, metric_fn in self.metrics.items():
+            self.log(f"test/{metric}", metric_fn(self.y_trues, self.y_hats))
 
     def validation_step(self, batch, batch_idx):
-        return self.test_step(batch, batch_idx)
+        x, y = batch
+        y_hat = self.forward(x)
+        loss = self.loss(y_hat, y)
+        self.log("test/loss", loss)
+        self.y_hats.append(torch.softmax(y_hat))
+        self.y_trues.append(y)
+        return {"y_hat": y_hat, "y": y, "loss": loss}
 
     def on_validation_epoch_end(self):
-        self.on_test_epoch_end()
+        for metric, metric_fn in self.metrics.items():
+            self.log(f"val/{metric}", metric_fn(self.y_trues, self.y_hats))
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
         return optimizer
-
-   
-"""def cli_main():
-    cli = LightningCLI(Passt, AudioSetDataModule) 
-    #cli = LightningCLI(PasstHPO, OpenMICDataModule) 
-    
-if __name__ == "__main__":
-    cli_main()
-    """

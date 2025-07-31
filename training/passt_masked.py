@@ -5,7 +5,7 @@ import torch
 
 from data.openmic_datamodule import OpenMICDataModule
 from training.passt import Passt
-from training.utils import masked_mean_average_precision
+from data.utils import masked_mean_average_precision
 
 def masked_bce_loss(y_hat, y_true, mask):
     samples_loss = torch.nn.functional.binary_cross_entropy_with_logits(

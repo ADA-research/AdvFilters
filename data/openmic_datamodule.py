@@ -10,25 +10,10 @@ from skmultilearn.model_selection import iterative_train_test_split
 import torch
 from torch.utils.data import DataLoader, Dataset, Subset
 from tqdm import tqdm
-from training.utils import decode_mp3, pad_or_truncate, roll, gain_adjust
+from data.utils import decode_mp3, pad_or_truncate, roll, gain_adjust, mixup
     
 _logger = logging.getLogger()
 torch.set_float32_matmul_precision('medium')
-    
-def mixup(dataset, x, y, mask, beta=2, rate=0.5):
-    """Masked Mixup adapted from Koutini et. al. (PaSST)"""
-    if torch.rand(1) < rate:
-        idx2 = torch.randint(len(dataset), (1,)).item()
-        x2, y2, mask2 = dataset.wavs[idx2], dataset.labels[idx2], dataset.masks[idx2] # Kinda hacky but avoids recursion
-        l = np.random.beta(beta, beta)
-        l = max(l, 1. - l)
-        x1 = x-x.mean()
-        x2 = x2-x2.mean()
-        x = (x1 * l + x2 * (1. - l))
-        x = x - x.mean()
-        y = y * l + y2 * (1. - l)
-        mask = (mask.bool() | mask2.bool()).float()
-    return x, y, mask
 
 class OpenMICDataset(Dataset):
     def __init__(self, wavs, labels, masks,

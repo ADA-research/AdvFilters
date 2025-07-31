@@ -34,12 +34,12 @@ def pad_or_truncate(x, audio_length):
         #return np.concatenate((x, np.zeros(audio_length - len(x), dtype=np.float32)), axis=0)
     else:
         return x[:audio_length] # Truncate 
-    
-def mixup(dataset, x, y, beta=2, rate=0.5):
-    """Mixup adapted from Koutini et. al. (PaSST)"""
+
+def mixup(dataset, x, y, mask, beta=2, rate=0.5):
+    """Masked Mixup adapted from Koutini et. al. (PaSST)"""
     if torch.rand(1) < rate:
         idx2 = torch.randint(len(dataset), (1,)).item()
-        x2, y2 = dataset[idx2]
+        x2, y2, mask2 = dataset.wavs[idx2], dataset.labels[idx2], dataset.masks[idx2] # Kinda hacky but avoids recursion
         l = np.random.beta(beta, beta)
         l = max(l, 1. - l)
         x1 = x-x.mean()
@@ -47,7 +47,8 @@ def mixup(dataset, x, y, beta=2, rate=0.5):
         x = (x1 * l + x2 * (1. - l))
         x = x - x.mean()
         y = y * l + y2 * (1. - l)
-    return x, y
+        mask = (mask.bool() | mask2.bool()).float()
+    return x, y, mask
     
 def roll(x, shift_range=50):
     shift = int(np.random.random_integers(-shift_range, shift_range))
