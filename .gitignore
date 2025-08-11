@@ -4,3 +4,4 @@ __pycache__
 /aam_inference/
 /wandb_runs/
 /lightning_logs/
+/wandb/

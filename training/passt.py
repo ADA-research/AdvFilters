@@ -9,7 +9,7 @@ from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_sc
 
 class Passt(L.LightningModule):
     def __init__(self, 
-                 pretrained_arch:str = None,
+                 pretrained_arch:str = "passt_s_swa_p16_128_ap476",
                  num_classes:int = 527,
                  lr:float = 0.00002,
                  s_patchout_t:int = 40,
@@ -45,14 +45,7 @@ class Passt(L.LightningModule):
                                  normalized=normalized, center=center, pad_mode=pad_mode) #fmin_aug_range=10,
                                  #fmax_aug_range=2000) #TODO: Extend to allow different window fn
         self.lr = lr
-        self.loss = torch.nn.functional.binary_cross_entropy_with_logits
-        
-        self.metrics = {
-            "accuracy": accuracy_score,
-            "recall": recall_score,
-            "precision": precision_score,
-            "f1": f1_score
-        }
+        self.loss = torch.nn.functional.cross_entropy
         self.y_hats = []
         self.y_trues = []
         
@@ -75,26 +68,38 @@ class Passt(L.LightningModule):
         y_hat = self.forward(x)
         loss = self.loss(y_hat, y)
         self.log("test/loss", loss)
-        self.y_hats.append(torch.softmax(y_hat))
-        self.y_trues.append(y)
+        self.y_hats.append(torch.softmax(y_hat, 1).cpu())
+        self.y_trues.append(y.cpu())
         return {"y_hat": y_hat, "y": y, "loss": loss}
 
     def on_test_epoch_end(self):
-        for metric, metric_fn in self.metrics.items():
-            self.log(f"test/{metric}", metric_fn(self.y_trues, self.y_hats))
-
+        y_hats = np.vstack(self.y_hats).argmax(axis=1)
+        y_trues = np.vstack(self.y_trues).argmax(axis=1)
+        self.log(f"test/accuracy", accuracy_score(y_trues, y_hats))
+        self.log(f"test/precision", precision_score(y_trues, y_hats, average="macro"))
+        self.log(f"test/recall", recall_score(y_trues, y_hats, average="macro"))
+        self.log(f"test/f1_score", f1_score(y_trues, y_hats, average="macro"))
+        self.y_hats = []
+        self.y_trues = []
+        
     def validation_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self.forward(x)
         loss = self.loss(y_hat, y)
-        self.log("test/loss", loss)
-        self.y_hats.append(torch.softmax(y_hat))
-        self.y_trues.append(y)
+        self.log("val/loss", loss)
+        self.y_hats.append(torch.softmax(y_hat, 1).cpu())
+        self.y_trues.append(y.cpu())
         return {"y_hat": y_hat, "y": y, "loss": loss}
 
     def on_validation_epoch_end(self):
-        for metric, metric_fn in self.metrics.items():
-            self.log(f"val/{metric}", metric_fn(self.y_trues, self.y_hats))
+        y_hats = np.vstack(self.y_hats).argmax(axis=1)
+        y_trues = np.vstack(self.y_trues).argmax(axis=1)
+        self.log(f"val/accuracy", accuracy_score(y_trues, y_hats))
+        self.log(f"val/precision", precision_score(y_trues, y_hats, average="macro"))
+        self.log(f"val/recall", recall_score(y_trues, y_hats, average="macro"))
+        self.log(f"val/f1_score", f1_score(y_trues, y_hats, average="macro"))
+        self.y_hats = []
+        self.y_trues = []
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)

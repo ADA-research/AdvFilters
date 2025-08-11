@@ -10,7 +10,7 @@ from skmultilearn.model_selection import iterative_train_test_split
 import torch
 from torch.utils.data import DataLoader, Dataset, Subset
 from tqdm import tqdm
-from data.utils import decode_mp3, pad_or_truncate, roll, gain_adjust, mixup
+from data.utils import decode_mp3, pad_or_truncate, roll, gain_adjust, mixup_masked
     
 _logger = logging.getLogger()
 torch.set_float32_matmul_precision('medium')
@@ -45,7 +45,7 @@ class OpenMICDataset(Dataset):
         y = self.labels[index]
         mask = self.masks[index]
         if self.apply_mixup:
-            x, y, mask = mixup(self, x, y, mask, **self.mixup_kwargs)
+            x, y, mask = mixup_masked(self, x, y, mask, **self.mixup_kwargs)
         if self.apply_random_gain:
             x = gain_adjust(x, **self.gain_kwargs)
         if self.apply_roll:
