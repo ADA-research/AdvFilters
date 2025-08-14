@@ -75,15 +75,18 @@ class PasstAdv(L.LightningModule):
     def training_step(self, batch, batch_idx):
         x, y = batch
         x = self.mel(x)
-        pgd_res = run_pgd_batched(self,
-                                samples=x,
-                                labels=y,
-                                alpha=self.pgd_alpha,
-                                eps=self.pgd_eps,
-                                max_iters=self.pgd_steps,
-                                restarts=self.pgd_restarts,
-                                verbose=False)
-        x_adv = pgd_res["perturbed_inputs"]
+        if self.pgd_restarts > 0:
+            pgd_res = run_pgd_batched(self,
+                                    samples=x,
+                                    labels=y,
+                                    alpha=self.pgd_alpha,
+                                    eps=self.pgd_eps,
+                                    max_iters=self.pgd_steps,
+                                    restarts=self.pgd_restarts,
+                                    verbose=False)
+            x_adv = pgd_res["perturbed_inputs"]
+        else:
+            x_adv = x
         y_hat = self.forward(x_adv)
         loss = self.loss(y_hat, y)
         self.log("train/loss", loss)
@@ -118,16 +121,16 @@ class PasstAdv(L.LightningModule):
         y_trues = np.vstack(self.y_trues).argmax(axis=1)
         y_hats_perturbed = np.vstack(self.y_hats_perturbed).argmax(axis=1)
         self.log(f"test/clean/accuracy", accuracy_score(y_trues, y_hats), on_epoch=True)
-        self.log(f"test/clean/precision", precision_score(y_trues, y_hats, average="macro"), on_epoch=True)
-        self.log(f"test/clean/recall", recall_score(y_trues, y_hats, average="macro"), on_epoch=True)
-        self.log(f"test/clean/f1_score", f1_score(y_trues, y_hats, average="macro"), on_epoch=True)
+        self.log(f"test/clean/precision", precision_score(y_trues, y_hats, average="micro"), on_epoch=True)
+        self.log(f"test/clean/recall", recall_score(y_trues, y_hats, average="micro"), on_epoch=True)
+        self.log(f"test/clean/f1_score", f1_score(y_trues, y_hats, average="micro"), on_epoch=True)
         
         # Slightly hacky way to log epsilon as step because 
         # loading and updating wandb tables hurt my feelings
         self.logger.log_metrics({f"test/adv/accuracy": accuracy_score(y_trues, y_hats_perturbed)}, step=self.pgd_eps)
-        self.logger.log_metrics({f"test/adv/precision": precision_score(y_trues, y_hats_perturbed, average="macro")}, step=self.pgd_eps)
-        self.logger.log_metrics({f"test/adv/recall": recall_score(y_trues, y_hats_perturbed, average="macro")}, step=self.pgd_eps)
-        self.logger.log_metrics({f"test/adv/f1_score": f1_score(y_trues, y_hats_perturbed, average="macro")}, step=self.pgd_eps)
+        self.logger.log_metrics({f"test/adv/precision": precision_score(y_trues, y_hats_perturbed, average="micro")}, step=self.pgd_eps)
+        self.logger.log_metrics({f"test/adv/recall": recall_score(y_trues, y_hats_perturbed, average="micro")}, step=self.pgd_eps)
+        self.logger.log_metrics({f"test/adv/f1_score": f1_score(y_trues, y_hats_perturbed, average="micro")}, step=self.pgd_eps)
         self.y_hats = []
         self.y_trues = []
         self.y_hats_perturbed = []
@@ -162,14 +165,14 @@ class PasstAdv(L.LightningModule):
         y_trues = np.vstack(self.y_trues).argmax(axis=1)
         y_hats_perturbed = np.vstack(self.y_hats_perturbed).argmax(axis=1)
         self.log(f"val/clean/accuracy", accuracy_score(y_trues, y_hats), on_epoch=True)
-        self.log(f"val/clean/precision", precision_score(y_trues, y_hats, average="macro"), on_epoch=True)
-        self.log(f"val/clean/recall", recall_score(y_trues, y_hats, average="macro"), on_epoch=True)
-        self.log(f"val/clean/f1_score", f1_score(y_trues, y_hats, average="macro"), on_epoch=True)
+        self.log(f"val/clean/precision", precision_score(y_trues, y_hats, average="micro"), on_epoch=True)
+        self.log(f"val/clean/recall", recall_score(y_trues, y_hats, average="micro"), on_epoch=True)
+        self.log(f"val/clean/f1_score", f1_score(y_trues, y_hats, average="micro"), on_epoch=True)
         
         self.log(f"val/adv/accuracy", accuracy_score(y_trues, y_hats_perturbed), on_epoch=True)
-        self.log(f"val/adv/precision", precision_score(y_trues, y_hats_perturbed, average="macro"), on_epoch=True)
-        self.log(f"val/adv/recall", recall_score(y_trues, y_hats_perturbed, average="macro"), on_epoch=True)
-        self.log(f"val/adv/f1_score", f1_score(y_trues, y_hats_perturbed, average="macro"), on_epoch=True)
+        self.log(f"val/adv/precision", precision_score(y_trues, y_hats_perturbed, average="micro"), on_epoch=True)
+        self.log(f"val/adv/recall", recall_score(y_trues, y_hats_perturbed, average="micro"), on_epoch=True)
+        self.log(f"val/adv/f1_score", f1_score(y_trues, y_hats_perturbed, average="micro"), on_epoch=True)
         self.y_hats = []
         self.y_trues = []
         self.y_hats_perturbed = []
