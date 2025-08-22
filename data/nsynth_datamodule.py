@@ -8,6 +8,7 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset
 from torch.nn.functional import one_hot
+import torchaudio
 from tqdm import tqdm
 from data.utils import pad_or_truncate, roll, gain_adjust, mixup
 
@@ -63,9 +64,10 @@ class NSynthDataset(Dataset):
         return torch.Tensor(x).float(), y
     
 def _load_wav(filename):
+    """y, sr = torchaudio.load(filename)
+    return y"""
     y, sr = librosa.load(filename, sr=32000)
-    return y
-
+    return np.float16(y)  # Convert to float16 for memory efficiency
 
 class NSynthDataModule(L.LightningDataModule):
     def __init__(self, 
@@ -97,8 +99,8 @@ class NSynthDataModule(L.LightningDataModule):
                 test_labels.append(label)
             test_labels = one_hot(torch.tensor(test_labels), num_classes=11)
             self.test_dataset = NSynthDataset(
-                torch.tensor(test_wavs, dtype=torch.float32),
-                torch.tensor(test_labels, dtype=torch.float32)
+                test_wavs,
+                test_labels
             )
         if stage == "fit" or stage == "validate":
             with open(self.dir + "nsynth-train/examples.json", "r") as f:
@@ -106,33 +108,38 @@ class NSynthDataModule(L.LightningDataModule):
             label_dict = {name: data["instrument_family_str"] for name, data in train_data.items()}
             filepaths = [self.dir + "nsynth-train/audio/" + file + ".wav" for file in label_dict.keys()]
             with Pool(max(self.num_workers, 1)) as p:
-                train_wavs = p.map(_load_wav, tqdm(filepaths, "Loading train folds"))
+                train_wavs = list(tqdm(p.imap(_load_wav, filepaths), "Loading train folds", total=len(filepaths)))
+            #train_wavs = np.array(train_wavs, dtype=np.float16)  # Convert to float16 for memory efficiency
+            #train_wavs = [_load_wav(fp) for fp in tqdm(filepaths, "Loading train folds")]
             train_labels = []
-            for _, label_str in label_dict.items():
+            for _, label_str in tqdm(label_dict.items(), "Mapping labels"):
                 label = CLASS_MAP[label_str]
-                train_labels.append(one_hot(torch.tensor(label), num_classes=11))
+                train_labels.append(label)
+            train_labels = one_hot(torch.tensor(train_labels), num_classes=11)
+            print("Creating dataset object")
             self.train_dataset = NSynthDataset(
-                torch.tensor(train_wavs, dtype=torch.float32),
-                torch.tensor(train_labels, dtype=torch.float32,),
+                train_wavs,
+                train_labels,
                 apply_mixup=True, apply_roll=True, apply_random_gain=True,
                 mixup_kwargs=self.mixup_kwargs,
                 roll_kwargs=self.roll_kwargs,
                 gain_kwargs=self.gain_kwargs
             )
-            
+            print("Done. Creating validation dataset.")
             with open(self.dir + "nsynth-valid/examples.json", "r") as f:
                 val_data = json.load(f)
             label_dict = {name: data["instrument_family_str"] for name, data in val_data.items()}
             filepaths = [self.dir + "nsynth-valid/audio/" + file + ".wav" for file in label_dict.keys()]
             with Pool(max(self.num_workers, 1)) as p:
-                val_wavs = p.map(_load_wav, tqdm(filepaths, "Loading test folds"))
+                val_wavs = p.map(_load_wav, tqdm(filepaths, "Loading validation folds"))
             val_labels = []
             for _, label_str in label_dict.items():
                 label = CLASS_MAP[label_str]
-                val_labels.append(one_hot(torch.tensor(label), num_classes=11))
+                val_labels.append(label)
+            val_labels = one_hot(torch.tensor(val_labels), num_classes=11)
             self.val_dataset = NSynthDataset(
-                torch.tensor(val_wavs, dtype=torch.float32),
-                torch.tensor(val_labels, dtype=torch.float32,)
+                val_wavs,
+                val_labels
             )
             
     def train_dataloader(self):
