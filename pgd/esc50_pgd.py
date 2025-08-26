@@ -98,6 +98,11 @@ def run_pgd_batched(model, samples, labels, device="cuda", alpha=0.005, eps=0.5,
             # as we just maximise loss for adv. training
         del inputs, inputs_before, outputs, outputs_before, adv_filters
 
+    # Where the original pred was already wrong, just use a filter of 1s
+    preds_before = model(inputs).argmax(dim=1)
+    wrong_indices = torch.where(preds_before != labels.argmax(dim=1))
+    found_filters[wrong_indices] = torch.ones((len(wrong_indices), n_mels))
+    
     return {"filters": found_filters,
             "perturbed_inputs": samples.unsqueeze(1) * found_filters.reshape((batch_size, 1, n_mels, 1)).to(device)}
 
