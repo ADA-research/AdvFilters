@@ -51,7 +51,7 @@ class NSynthDataset(Dataset):
         return len(self.wavs)
     
     def __getitem__(self, index):
-        x = self.wavs[index]
+        x = torch.Tensor(self.wavs[index]).float()
         y = self.labels[index]
         if self.apply_mixup:
             x, y = mixup(self, x, y, **self.mixup_kwargs)
@@ -61,7 +61,7 @@ class NSynthDataset(Dataset):
             x = roll(x, **self.roll_kwargs)
         x = pad_or_truncate(x, self.sample_rate * self.audio_length)
         x = x - x.mean() # Normalisation
-        return torch.Tensor(x).float(), y
+        return torch.Tensor(x).float(), y.float()
     
 def _load_wav(filename):
     """y, sr = torchaudio.load(filename)
@@ -97,7 +97,7 @@ class NSynthDataModule(L.LightningDataModule):
             for _, label_str in label_dict.items():
                 label = CLASS_MAP[label_str]
                 test_labels.append(label)
-            test_labels = one_hot(torch.tensor(test_labels), num_classes=11)
+            test_labels = one_hot(torch.tensor(test_labels), num_classes=11).float()
             self.test_dataset = NSynthDataset(
                 test_wavs,
                 test_labels
@@ -115,7 +115,7 @@ class NSynthDataModule(L.LightningDataModule):
             for _, label_str in tqdm(label_dict.items(), "Mapping labels"):
                 label = CLASS_MAP[label_str]
                 train_labels.append(label)
-            train_labels = one_hot(torch.tensor(train_labels), num_classes=11)
+            train_labels = one_hot(torch.tensor(train_labels), num_classes=11).float()
             print("Creating dataset object")
             self.train_dataset = NSynthDataset(
                 train_wavs,
@@ -136,7 +136,7 @@ class NSynthDataModule(L.LightningDataModule):
             for _, label_str in label_dict.items():
                 label = CLASS_MAP[label_str]
                 val_labels.append(label)
-            val_labels = one_hot(torch.tensor(val_labels), num_classes=11)
+            val_labels = one_hot(torch.tensor(val_labels), num_classes=11).float()
             self.val_dataset = NSynthDataset(
                 val_wavs,
                 val_labels
