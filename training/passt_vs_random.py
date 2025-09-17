@@ -1,6 +1,6 @@
 from training.PaSST.passt import PaSST, PatchEmbed, get_model
 from training.PaSST.mel_configurable import AugmentMelSTFT
-from pgd.random_search import run_random_search_batched
+from attacks.random_search import run_random_search_batched
 
 import numpy as np
 import pytorch_lightning as L

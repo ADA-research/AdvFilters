@@ -3,7 +3,7 @@ from pytorch_lightning.cli import LightningCLI
 from sklearn.metrics import average_precision_score
 import torch
 
-from pgd.openmic_pgd import run_pgd_batched_openmic, run_pgd_batched_flip_one_openmic
+from attacks.openmic_pgd import run_pgd_batched_openmic, run_pgd_batched_flip_one_openmic
 from data.openmic_datamodule import OpenMICDataModule
 from training.passt_masked import PasstMasked
 from data.utils import masked_mean_average_precision
