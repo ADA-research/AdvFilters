@@ -1,12 +1,5 @@
 from torchmetrics.functional.classification import multiclass_accuracy
 import torch
-from tqdm import tqdm
-
-from hear21passt.base import get_basic_model, get_model_passt
-from data.esc50_datamodule import ESC50DataModule
-
-def _calc_accuracy(label, output):
-    return multiclass_accuracy(preds=output.argmax(dim=1), target=label.argmax(dim=1), num_classes=50)
 
 def run_random_search_batched(model, samples, labels, device="cuda", eps=0.5, max_iters=100, verbose=False):
     if verbose:
