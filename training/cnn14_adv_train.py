@@ -1,7 +1,7 @@
 #from training.PaSST.passt import PaSST, PatchEmbed, get_model
 from training.PANNs.cnn14 import Transfer_Cnn14
 from training.PaSST.mel_configurable import AugmentMelSTFT
-from pgd.esc50_pgd import run_pgd_batched
+from pgd.filter_pgd import run_pgd_batched
 
 import numpy as np
 import pytorch_lightning as L
