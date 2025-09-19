@@ -1,6 +1,5 @@
 import numpy as np
 from pytorch_lightning.cli import LightningCLI 
-from sklearn.metrics import average_precision_score
 import torch
 
 from attacks.openmic_pgd import run_pgd_batched_openmic, run_pgd_batched_flip_one_openmic

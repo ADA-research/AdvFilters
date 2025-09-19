@@ -1,6 +1,5 @@
 import numpy as np
 from pytorch_lightning.cli import LightningCLI 
-from sklearn.metrics import average_precision_score
 import torch
 
 from data.openmic import OpenMICDataModule

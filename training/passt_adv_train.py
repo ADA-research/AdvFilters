@@ -4,11 +4,8 @@ from attacks.filter_pgd import run_pgd_batched
 
 import numpy as np
 import pytorch_lightning as L
-from pytorch_lightning.cli import LightningCLI
 import torch
 from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_score
-import wandb
-from lightning.pytorch import loggers as pl_loggers
 
 class PasstAdv(L.LightningModule):
     def __init__(self, 
