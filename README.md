@@ -41,7 +41,7 @@ Passing the PGD parameters `pgd_eps` (epsilon), `pgd_steps`, and `pgd_restarts` 
 
 Get more usage information with `python -m run -h`.
 
-The `plotting` directory contains a jupyter notebook, as well as our results as pickle files to recreate the figures in our paper, as well as the statistical tests.
+The `plotting` directory contains a jupyter notebook, as well as our results as pickle files to recreate the figures in our paper, and the statistical tests.
 
 ## Example
 To run adversarial training for PaSST on ESC-50 with 10 steps, 10 restarts, and epsilon = 0.5:
