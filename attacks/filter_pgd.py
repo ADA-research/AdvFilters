@@ -1,9 +1,5 @@
 from torchmetrics.functional.classification import multiclass_accuracy
 import torch
-from tqdm import tqdm
-
-from hear21passt.base import get_basic_model, get_model_passt
-from data.esc50 import ESC50DataModule
 
 def _calc_accuracy(label, output):
     return multiclass_accuracy(preds=output.argmax(dim=1), target=label.argmax(dim=1), num_classes=50)
@@ -105,38 +101,3 @@ def run_pgd_batched(model, samples, labels, device="cuda", alpha=0.005, eps=0.5,
     
     return {"filters": found_filters,
             "perturbed_inputs": samples.unsqueeze(1) * found_filters.reshape((batch_size, 1, n_mels, 1)).to(device)}
-
-
-if __name__ == "__main__":
-    # get the PaSST model wrapper, includes Melspectrogram and the default pre-trained transformer
-    model = get_basic_model(mode="logits")
-    # replace the transformer with one that outputs 50 classes
-    model.net = get_model_passt(arch="passt_s_swa_p16_128_ap476",  n_classes=50)
-    model.mel = model.mel.to("cuda")
-    # load the pre-trained model state dict
-    state_dict = torch.load('./models/esc50-passt-s-n-f128-p16-s10-fold1-acc.967.pt')
-    # load the weights into the transformer
-    model.net.load_state_dict(state_dict)
-
-    model.eval()
-
-    dm = ESC50DataModule(batch_size=1, 
-                        labels_csv="/home/dettmer/testing/esc50/ESC-50/meta/esc50.csv", 
-                        wav_dir="/home/dettmer/testing/esc50/ESC-50/audio/",
-                        test_fold=1)
-    dm.setup("test")
-    loader = dm.test_dataloader()
-    
-    successes = 0
-    failures = 0
-    for x, y in loader:
-        spec = model.mel(x.to("cuda"))
-        res = run_pgd_single_sample(model.net, spec, y.to("cuda"), torch.nn.CrossEntropyLoss())
-        if res["acc_after"] < res["acc_before"]:
-            successes += 1
-            print("success")
-        else:
-            failures += 1
-            print("failure")
-    
-    print(f"Successes: {successes}\nFailures{failures}")

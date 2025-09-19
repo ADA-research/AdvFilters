@@ -1,4 +1,3 @@
-from torchmetrics.functional.classification import multiclass_accuracy
 import torch
 
 def run_random_search_batched(model, samples, labels, device="cuda", eps=0.5, max_iters=100, verbose=False):
