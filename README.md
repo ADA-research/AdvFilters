@@ -30,11 +30,11 @@ The `training` directory contains config files for all datasets and PaSST/CNN14 
 
 You can use them with the CLI provided in `run.py` as follows:  
 ```bash
-python -m run fit --config './training/base_config_esc50.yaml'
+python -m run fit --config './training/configs/base_config_esc50.yaml'
 ```
 
 ```bash
-python -m run test --config './training/base_config_esc50.yaml' --ckpt-path your_model_checkpoint.ckpt
+python -m run test --config './training/configs/base_config_esc50.yaml' --ckpt-path your_model_checkpoint.ckpt
 ``` 
 
 Passing the PGD parameters `pgd_eps` (epsilon), `pgd_steps`, and `pgd_restarts` to the `fit` routine ([see documentation](https://lightning.ai/docs/pytorch/stable/cli/lightning_cli_intermediate.html#train-a-model-with-the-cli)) will run adversarial training. Passing them to the `test` routine will run adversarial attacks on the test set.
@@ -47,7 +47,7 @@ The `plotting` directory contains a jupyter notebook, as well as our results as 
 To run adversarial training for PaSST on ESC-50 with 10 steps, 10 restarts, and epsilon = 0.5:
 
 ```bash
-python -m run fit --config './training/base_config_esc50.yaml' \
+python -m run fit --config './training/configs/base_config_esc50.yaml' \
  --data ESC50DataModule --data.dir your-dataset-path \
  --model PaSSTAdv --pgd_eps 0.5 --pgd_steps 10 --pgd_restarts 10
 ```
