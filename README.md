@@ -14,7 +14,7 @@ If you would like to use CNN14: Download the pre-trained CNN14 weights `'Cnn14_m
 ### Datasets
 We provide Lightning DataModules for ESC-50, NSynth and SpeechCommands. Please download the datasets from their respective sources and provide the path to the DataModules like so:
 ```bash
---data.dir <path-to-dataset>
+--data.dir path-to-dataset
 ```
 
 ## Basic Usage
@@ -40,6 +40,6 @@ To run adversarial training for PaSST on ESC-50 with 10 steps, 10 restarts, and 
 
 ```bash
 python -m run fit --config './training/base_config_esc50.yaml' \
- --data ESC50DataModule --data.dir <your-dataset-path> \
+ --data ESC50DataModule --data.dir your-dataset-path \
  --model PaSSTAdv --pgd_eps 0.5 --pgd_steps 10 --pgd_restarts 10
 ```
