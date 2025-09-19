@@ -12,9 +12,17 @@ The pre-trained PaSST weights are downloaded automatically on first instantiatio
 If you would like to use CNN14: Download the pre-trained CNN14 weights `'Cnn14_mAP=0.431.pth'` from [here](https://zenodo.org/records/3987831) and provide the path as argument `--model.pretrained_ckpt <Path>` or add it to the config files.
 
 ### Datasets
-We provide Lightning DataModules for ESC-50, NSynth and SpeechCommands. Please download the datasets from their respective sources and provide the path to the DataModules like so:
+We provide Lightning DataModules for [ESC-50](https://github.com/karolpiczak/ESC-50), [NSynth](https://magenta.withgoogle.com/datasets/nsynth#files) and [SpeechCommands](https://huggingface.co/datasets/google/speech_commands). Please download the datasets from their respective sources and provide the base directory path to the DataModules like so:
 ```bash
 --data.dir path-to-dataset
+```
+
+Note on NSynth: The NSynth download is split into three files. Download and extract the json/wav tarballs and then put them in a directory like so:
+```
+nsynth/
+├── nsynth-train/
+├── nsynth-valid/
+└── nsynth-test/
 ```
 
 ## Basic Usage
