@@ -3,6 +3,7 @@ import pytorch_lightning as L
 from glob import glob
 import librosa
 import os
+import pathlib
 import torch
 from torch.nn.functional import one_hot
 from torch.utils.data import DataLoader, Dataset
@@ -91,8 +92,8 @@ def _load_wav(filename):
 
 class SpeechCommandsDataModule(L.LightningDataModule):
     def __init__(self, 
+                 dir: str = '/hpcwork/wq656653/adv-filters/SpeechCommands/speech_commands_v0.02/',
                  batch_size: int = 32, 
-                 dataset_dir: str = '/hpcwork/wq656653/adv-filters/SpeechCommands/speech_commands_v0.02/',
                  num_workers: int = 0,
                  test_fold: int = 5,
                  val_fold: int = 4,
@@ -100,9 +101,21 @@ class SpeechCommandsDataModule(L.LightningDataModule):
                  roll_kwargs: dict = {},
                  gain_kwargs: dict = {},
                  debug: bool = False):
+        """
+        Args:
+            dir (str, optional): Directory where the Speech Commands dataset is located.
+            batch_size (int, optional): Batch size. Defaults to 32.
+            num_workers (int, optional): Number of workers for data loading, see Lightning documentation. Defaults to 0.
+            test_fold (int, optional): Fold to use as test set. Defaults to 5.
+            val_fold (int, optional): Fold to use as validation set. Defaults to 4.
+            mixup_kwargs (dict, optional): Arguments for mixup augmentation. See utils.py. Defaults to {}.
+            roll_kwargs (dict, optional): Arguments for roll augmentation. See utils.py. Defaults to {}.
+            gain_kwargs (dict, optional): Arguments for random gain augmentation. See utils.py. Defaults to {}.
+            debug (bool, optional): If True, only use 100 samples for train/val/test. Defaults to False.
+        """
         super().__init__()
         self.batch_size = batch_size
-        self.dataset_dir = dataset_dir
+        self.dir = pathlib.Path(dir)
         self.num_workers = num_workers
         self.test_fold = test_fold
         self.val_fold = val_fold
@@ -112,33 +125,33 @@ class SpeechCommandsDataModule(L.LightningDataModule):
         self.debug = debug
             
     def setup(self, stage:str):
-        if not os.path.exists(self.dataset_dir + "train_list.txt"):
-            with open(self.dataset_dir + 'validation_list.txt', 'r') as f:
+        if not os.path.exists(self.dir / "train_list.txt"):
+            with open(self.dir / 'validation_list.txt', 'r') as f:
                 content = f.read()
                 val_files = content.split('\n')
-            with open(self.dataset_dir + 'testing_list.txt', 'r') as f:
+            with open(self.dir / 'testing_list.txt', 'r') as f:
                 content = f.read()
                 test_files = content.split('\n')
-            all_files = glob(self.dataset_dir + '*/**/*.wav', recursive=True)
-            all_files = [file.replace(self.dataset_dir, "") for file in all_files]
+            all_files = glob(self.dir / '*/**/*.wav', recursive=True)
+            all_files = [file.replace(self.dir, "") for file in all_files]
             train_files = [file for file in all_files if file not in val_files and 
                            file not in test_files and 
                            "_background_noise_" not in file]
-            with open(self.dataset_dir + 'train_list.txt', 'w') as f:
+            with open(self.dir / 'train_list.txt', 'w') as f:
                 for file in train_files:
-                    f.write(file + '\n')
+                    f.write(str(file) + '\n')
                     
         if stage == "fit" or stage == "validate": 
             # Train set
-            with open(self.dataset_dir + 'train_list.txt', 'r') as f:
+            with open(self.dir / 'train_list.txt', 'r') as f:
                 content = f.read()
                 train_list = content.split('\n')[:-1]
-                train_files = [self.dataset_dir + file for file in train_list]
+                train_files = [self.dir / file for file in train_list]
             if self.debug:
                 train_files = train_files[:100]
             with Pool(max(self.num_workers, 1)) as p:
                 train_wavs = p.map(_load_wav, tqdm(train_files, "Loading training files"))
-            labels = [file[len(self.dataset_dir):].split("/")[0] for file in train_files]
+            labels = [file.parent.name for file in train_files]
             labels = [WORDS.index(label) for label in labels]
             train_labels_enc = one_hot(torch.tensor(labels), num_classes=len(WORDS))
             self.train_dataset = SpeechCommandsDataset(
@@ -150,15 +163,15 @@ class SpeechCommandsDataModule(L.LightningDataModule):
                 gain_kwargs=self.gain_kwargs
             )
             # Validation set
-            with open(self.dataset_dir + 'validation_list.txt', 'r') as f:
+            with open(self.dir / 'validation_list.txt', 'r') as f:
                 content = f.read()
                 val_list = content.split('\n')[:-1]
-                val_files = [self.dataset_dir + file for file in val_list]
+                val_files = [self.dir / file for file in val_list]
             if self.debug:
                 val_files = val_files[:100]
             with Pool(max(self.num_workers, 1)) as p:
                 val_wavs = p.map(_load_wav, tqdm(val_files, "Loading validation files"))
-            labels = [file[len(self.dataset_dir):].split("/")[0] for file in val_files]
+            labels = [file.parent.name for file in val_files]
             labels = [WORDS.index(label) for label in labels]
             val_labels_enc = one_hot(torch.tensor(labels), num_classes=len(WORDS))
             self.val_dataset = SpeechCommandsDataset(
@@ -166,15 +179,15 @@ class SpeechCommandsDataModule(L.LightningDataModule):
                 torch.tensor(val_labels_enc, dtype=torch.float32)
             )
         if stage == "test" or stage == "predict":
-            with open(self.dataset_dir + 'testing_list.txt', 'r') as f:
+            with open(self.dir / 'testing_list.txt', 'r') as f:
                 content = f.read()
                 test_list = content.split('\n')[:-1]
-                test_files = [self.dataset_dir + file for file in test_list]
+                test_files = [self.dir / file for file in test_list]
             if self.debug:
                 test_files = test_files[:100]
             with Pool(max(self.num_workers, 1)) as p:
                 test_wavs = p.map(_load_wav, tqdm(test_files, "Loading test files"))
-            labels = [file[len(self.dataset_dir):].split("/")[0] for file in test_files]
+            labels = [file.parent.name for file in test_files]
             labels = [WORDS.index(label) for label in labels]
             test_labels_enc = one_hot(torch.tensor(labels), num_classes=len(WORDS))
             self.test_dataset = SpeechCommandsDataset(
@@ -193,14 +206,3 @@ class SpeechCommandsDataModule(L.LightningDataModule):
     
     def predict_dataloader(self):
         return DataLoader(self.test_dataset, batch_size=self.batch_size, num_workers=self.num_workers)
-
-if __name__ == "__main__":
-    module = SpeechCommandsDataModule(num_workers=20, batch_size=1, debug=True)
-    module.setup("fit")
-    loader = module.train_dataloader()
-    print(len(loader))
-    for x, y in loader:
-        print(x.shape, y.shape)
-        print(x)
-        print(y)
-        break

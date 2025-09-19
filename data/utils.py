@@ -36,7 +36,7 @@ def pad_or_truncate(x, audio_length):
         return x[:audio_length] # Truncate 
 
 def mixup_masked(dataset, x, y, mask, beta=2, rate=0.5):
-    """Masked Mixup adapted from Koutini et. al. (PaSST)"""
+    """Masked Mixup adapted from Koutini et al. (PaSST)"""
     if torch.rand(1) < rate:
         idx2 = torch.randint(len(dataset), (1,)).item()
         x2, y2, mask2 = dataset.wavs[idx2], dataset.labels[idx2], dataset.masks[idx2] # Kinda hacky but avoids recursion
@@ -51,7 +51,7 @@ def mixup_masked(dataset, x, y, mask, beta=2, rate=0.5):
     return x, y, mask
     
 def mixup(dataset, x, y, beta=2, rate=0.5):
-    """Masked Mixup adapted from Koutini et. al. (PaSST)"""
+    """Mixup without masks adapted from Koutini et al. (PaSST)"""
     if torch.rand(1) < rate:
         idx2 = torch.randint(len(dataset), (1,)).item()
         x2, y2 = dataset.wavs[idx2], dataset.labels[idx2] # Kinda hacky but avoids recursion
@@ -73,6 +73,7 @@ def gain_adjust(x, db_range=7):
     return gain(x, shift)
     
 def masked_mean_average_precision(targets, preds, masks):
+    """Compute mean average precision with masking as in Koutini et al. 2022"""
     targets = targets.round()
     ap_scores = []
     try:

@@ -1,9 +1,9 @@
 from multiprocessing import Pool
 import pytorch_lightning as L
-from glob import glob
 import numpy as np
 import librosa
 import pandas as pd
+import pathlib
 import torch
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
@@ -46,34 +46,40 @@ class ESC50Dataset(Dataset):
         x = x - x.mean() # Normalisation
         return torch.Tensor(x).float(), y
     
-    
-def _load_fold(fold:str):
-    features = np.load(fold)
-    labels = np.load(fold.replace("features", "labels"))
-    return features, labels
-    
 def _load_wav(filename):
     y, sr = librosa.load(filename, sr=32000)
     return y
 
-
 class ESC50DataModule(L.LightningDataModule):
     def __init__(self, 
+                 dir: str,
                  batch_size: int = 32, 
                  augment: bool = True, 
-                 wav_dir: str = "/hpcwork/wq656653/adv-filters/ESC-50/audio/", 
-                 labels_csv: str = "/hpcwork/wq656653/adv-filters/ESC-50/meta/esc50.csv",
                  num_workers: int = 0,
                  test_fold: int = 5,
                  val_fold: int = 4,
                  mixup_kwargs: dict = {},
                  roll_kwargs: dict = {},
                  gain_kwargs: dict = {}):
+        """
+        DataModule for ESC-50 dataset.
+        Args:
+            dir (str): Path to the ESC-50 dataset directory. This directory should contain the 'audio' and 'meta' subdirectories.
+            batch_size (int, optional): Batch size. Defaults to 32.
+            augment (bool, optional): Whether to apply data augmentation. Defaults to True (for training).
+            num_workers (int, optional): Number of workers for data loading, see Lightning documentation. Defaults to 0.
+            test_fold (int, optional): Fold to use for testing. Defaults to 5.
+            val_fold (int, optional): Fold to use for validation. Defaults to 4.
+            mixup_kwargs (dict, optional): Arguments for mixup augmentation. See utils.py. Defaults to {}.
+            roll_kwargs (dict, optional): Arguments for roll augmentation. See utils.py. Defaults to {}.
+            gain_kwargs (dict, optional): Arguments for random gain augmentation. See utils.py. Defaults to {}.
+        """
         super().__init__()
+        dir = pathlib.Path(dir)
+        self.wav_dir = dir / "audio"
+        self.labels_csv = dir / "meta" / "esc50.csv"
         self.batch_size = batch_size
         self.augment = augment
-        self.wav_dir = wav_dir
-        self.labels_csv = labels_csv
         self.num_workers = num_workers
         self.test_fold = test_fold
         self.val_fold = val_fold
@@ -87,7 +93,7 @@ class ESC50DataModule(L.LightningDataModule):
         if stage == "test" or stage == "predict":
             test_wavs, test_labels = [], []
             test_df = df.loc[df.fold == self.test_fold]
-            filepaths = [self.wav_dir + file for file in test_df.filename.to_list()]
+            filepaths = [self.wav_dir / file for file in test_df.filename.to_list()]
             with Pool(max(self.num_workers, 1)) as p:
                 test_wavs = p.map(_load_wav, tqdm(filepaths, "Loading test folds"))
             for index, row in test_df.iterrows():
@@ -103,7 +109,7 @@ class ESC50DataModule(L.LightningDataModule):
             train_wavs, train_labels = [], []
             train_df = df.loc[df.fold != self.test_fold]
             train_df = train_df.loc[train_df.fold != self.val_fold]
-            filepaths = [self.wav_dir + file for file in train_df.filename.to_list()]
+            filepaths = [self.wav_dir / file for file in train_df.filename.to_list()]
             with Pool(max(self.num_workers, 1)) as p:
                 train_wavs = p.map(_load_wav, tqdm(filepaths, "Loading training folds"))
             for index, row in train_df.iterrows():
@@ -120,7 +126,7 @@ class ESC50DataModule(L.LightningDataModule):
             )
             val_wavs, val_labels = [], []
             val_df = df.loc[df.fold == self.val_fold]
-            filepaths = [self.wav_dir + file for file in val_df.filename.to_list()]
+            filepaths = [self.wav_dir / file for file in val_df.filename.to_list()]
             with Pool(max(self.num_workers, 1)) as p:
                 val_wavs = p.map(_load_wav, tqdm(filepaths, "Loading validation folds"))
             for index, row in val_df.iterrows():
@@ -143,8 +149,3 @@ class ESC50DataModule(L.LightningDataModule):
     
     def predict_dataloader(self):
         return DataLoader(self.test_dataset, batch_size=self.batch_size, num_workers=self.num_workers)
-
-if __name__ == "__main__":
-    module = ESC50DataModule(num_workers=20)
-    module.setup("fit")
-    print(len(module.train_dataloader()))
