@@ -4,7 +4,7 @@ This repo contains the code corresponding to our paper "Robustness of Audio Clas
 Our code heavily relies on the [Pytorch Lightning](https://lightning.ai/docs/pytorch/stable/) framework. It is recommended to familiarise yourself with Lightning before experimenting with, or making modifications to this code.
 
 ## Basic Usage
-Create a python environment (e.g., virtualenv or conda) by using the `requirements.txt` file.
+Create a python 3.11 environment (e.g., virtualenv or conda) by using the `requirements.txt` file.
 
 The `training` directory contains config files for all datasets and PaSST/CNN14 models. The settings given in the config files (all pgd params set to 0) simply trains the baseline models without adversarial training.
 
@@ -31,14 +31,6 @@ python -m run fit --config './training/base_config_esc50.yaml' \
  --pgd_eps 0.5 --pgd_steps 10 --pgd_restarts 10
 ```
 
-
 ## TODO
 - Update requirements.txt
-- docstrings
-- Update config files with info from job scripts
-    - batch sizes
-    - lr
-    - sr
-    - data aug
-    - ESC50 folds
-    - 
+- model docstrings
