@@ -1,16 +1,13 @@
-from training.PaSST.passt import PaSST, PatchEmbed, get_model
+from training.PaSST.passt import PaSST, get_model
 from training.PaSST.mel_configurable import AugmentMelSTFT
 from attacks.random_search import run_random_search_batched
 
 import numpy as np
 import pytorch_lightning as L
-from pytorch_lightning.cli import LightningCLI
 import torch
 from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_score
-import wandb
-from lightning.pytorch import loggers as pl_loggers
 
-class PasstAdv(L.LightningModule):
+class PasstRandom(L.LightningModule):
     def __init__(self, 
                  pretrained_arch:str = "passt_s_swa_p16_128_ap476",
                  num_classes:int = 527,
@@ -32,12 +29,37 @@ class PasstAdv(L.LightningModule):
                  normalized:bool = False,
                  center:bool = True,
                  pad_mode:str = "reflect",
-                 pgd_alpha = 0.001,
-                 pgd_eps = 0.01,
-                 pgd_steps = 10,
-                 pgd_restarts = 1,
-                 pgd_restarts_val = 10,
+                 rnd_eps = 0,
+                 rnd_steps = 10,
                  *args, **kwargs) -> None:
+        """
+        This class implements random search evaluation for PaSST.
+        It uses random search to create filter-based adversarial examples during testing.
+        Args:
+            pretrained_arch (str, optional): The architecture of the pretrained PaSST model to use. See `get_model` in `training/PaSST/passt.py` for available architectures. Defaults to 'passt_s_swa_p16_128_ap476'.
+            num_classes (int, optional): Number of output classes. Defaults to 527 for AudioSet. 
+                Use 50 for ESC-50, 35 for SpeechCommands, and 11 for NSynth.
+            lr (float, optional): Learning rate. Defaults to 0.00002.
+            s_patchout_t (int, optional): Temporal patchout for PaSST. Defaults to 40.
+            s_patchout_f (int, optional): Frequency patchout for PaSST. Defaults to 4.
+            n_mels (int, optional): Number of mel bins. Defaults to 128.
+            sr (int, optional): Sample rate. Defaults to 32000.
+            win_length (int, optional): STFT window length. Defaults to 800.
+            hop_size (int, optional): STFT hop size. Defaults to 320.
+            n_fft (int, optional): STFT FFT size. Defaults to 1024.
+            freqm (int, optional): Frequency masking parameter for SpecAugment. Defaults to 48.
+            timem (int, optional): Time masking parameter for SpecAugment. Defaults to 192.
+            htk (bool, optional): Use HTK mel scale. Defaults to True.
+            f_min (float, optional): Minimum frequency for mel spectrogram. Defaults to 0.0.
+            f_max (float, optional): Maximum frequency for mel spectrogram. Defaults to None, which sets it to sr/2.
+            window_fn (str, optional): Window function for STFT. Defaults to 'hann'.
+            power (int, optional): Power for spectrogram. Defaults to 2.
+            normalized (bool, optional): Whether to normalize the spectrogram. Defaults to False.
+            center (bool, optional): Whether to center the STFT. Defaults to True.
+            pad_mode (str, optional): Padding mode for STFT. Defaults to 'reflect'.
+            rnd_eps (float, optional): Clips the filter perturbation in the range [1 - eps, 1 + eps]. Defaults to 0.
+            rnd_steps (int, optional): Number of random search steps. Defaults to 0.
+            """
         super().__init__(*args, **kwargs)
         
         # Load Pretrained
@@ -50,15 +72,11 @@ class PasstAdv(L.LightningModule):
             
         self.mel = AugmentMelSTFT(n_mels=n_mels, sr=sr, win_length=win_length, hopsize=hop_size, n_fft=n_fft, freqm=freqm,
                                  timem=timem, htk=htk, f_min=f_min, f_max=f_max, window_fn=window_fn, power=power, 
-                                 normalized=normalized, center=center, pad_mode=pad_mode) #fmin_aug_range=10,
-                                 #fmax_aug_range=2000) #TODO: Extend to allow different window fn
+                                 normalized=normalized, center=center, pad_mode=pad_mode) 
         self.lr = lr
         self.loss = torch.nn.functional.cross_entropy
-        self.pgd_alpha = pgd_alpha
-        self.pgd_eps = pgd_eps
-        self.pgd_steps = pgd_steps
-        self.pgd_restarts = pgd_restarts
-        self.pgd_restarts_val = pgd_restarts_val
+        self.rnd_eps = rnd_eps
+        self.rnd_steps = rnd_steps
         
         self.y_hats = []
         self.y_trues = []
@@ -73,22 +91,19 @@ class PasstAdv(L.LightningModule):
         return x[0] # Passt returns a tuple (logits, embeddings)
 
     def training_step(self, *args, **kwargs):
-        raise NotImplementedError("Training step is disabled for random search evaluation.")
+        raise NotImplementedError("""Training step is disabled for random search evaluation. 
+                                  Use PaSST or PaSSTAdv for training.""")
 
     def test_step(self, batch, batch_idx):
         x, y = batch
         x = self.mel(x)
         y_hat = self.forward(x)
-        """loss = self.loss(y_hat, y)
-        self.log("test/clean/loss", loss)
-        self.y_hats.append(torch.softmax(y_hat, 1).cpu())"""
         self.y_trues.append(y.cpu())
-        #with torch.inference_mode(False):
         rnd_res = run_random_search_batched(self,
                                     samples=x.clone(),
                                     labels=y.clone(),
                                     eps=self.pgd_eps,
-                                    max_iters=self.pgd_steps * self.pgd_restarts,
+                                    max_iters=self.rnd_steps,
                                     verbose=False)
         x_adv = rnd_res["perturbed_inputs"]
         y_hat_adv = self.forward(x_adv)
@@ -98,13 +113,8 @@ class PasstAdv(L.LightningModule):
         return {"y_hat": y_hat, "y": y, "loss": loss_adv}
 
     def on_test_epoch_end(self):
-        #y_hats = np.vstack(self.y_hats).argmax(axis=1)
         y_trues = np.vstack(self.y_trues).argmax(axis=1)
         y_hats_perturbed = np.vstack(self.y_hats_perturbed).argmax(axis=1)
-        """self.log(f"test/clean/accuracy", accuracy_score(y_trues, y_hats), on_epoch=True)
-        self.log(f"test/clean/precision", precision_score(y_trues, y_hats, average="micro"), on_epoch=True)
-        self.log(f"test/clean/recall", recall_score(y_trues, y_hats, average="micro"), on_epoch=True)
-        self.log(f"test/clean/f1_score", f1_score(y_trues, y_hats, average="micro"), on_epoch=True)"""
         
         # Slightly hacky way to log epsilon as step because 
         # loading and updating wandb tables hurt my feelings

@@ -32,12 +32,45 @@ class PasstAdv(L.LightningModule):
                  normalized:bool = False,
                  center:bool = True,
                  pad_mode:str = "reflect",
-                 pgd_alpha = 0.001,
-                 pgd_eps = 0.01,
-                 pgd_steps = 10,
-                 pgd_restarts = 1,
-                 pgd_restarts_val = 10,
+                 pgd_alpha = 0,
+                 pgd_eps = 0,
+                 pgd_steps = 0,
+                 pgd_restarts = 0,
+                 pgd_restarts_val = 0,
                  *args, **kwargs) -> None:
+        """
+        This class implements adversarial training and evaluation for PaSST.
+        It uses Projected Gradient Descent (PGD) to create filter-based adversarial examples during training, validation and testing.
+        Args:
+            pretrained_arch (str, optional): The architecture of the pretrained PaSST model to use. See `get_model` in `training/PaSST/passt.py` for available architectures. Defaults to 'passt_s_swa_p16_128_ap476'.
+            num_classes (int, optional): Number of output classes. Defaults to 527 for AudioSet. 
+                Use 50 for ESC-50, 35 for SpeechCommands, and 11 for NSynth.
+            lr (float, optional): Learning rate. Defaults to 0.00002.
+            s_patchout_t (int, optional): Temporal patchout for PaSST. Defaults to 40.
+            s_patchout_f (int, optional): Frequency patchout for PaSST. Defaults to 4.
+            n_mels (int, optional): Number of mel bins. Defaults to 128.
+            sr (int, optional): Sample rate. Defaults to 32000.
+            win_length (int, optional): STFT window length. Defaults to 800.
+            hop_size (int, optional): STFT hop size. Defaults to 320.
+            n_fft (int, optional): STFT FFT size. Defaults to 1024.
+            freqm (int, optional): Frequency masking parameter for SpecAugment. Defaults to 48.
+            timem (int, optional): Time masking parameter for SpecAugment. Defaults to 192.
+            htk (bool, optional): Use HTK mel scale. Defaults to True.
+            f_min (float, optional): Minimum frequency for mel spectrogram. Defaults to 0.0.
+            f_max (float, optional): Maximum frequency for mel spectrogram. Defaults to None, which sets it to sr/2.
+            window_fn (str, optional): Window function for STFT. Defaults to 'hann'.
+            power (int, optional): Power for spectrogram. Defaults to 2.
+            normalized (bool, optional): Whether to normalize the spectrogram. Defaults to False.
+            center (bool, optional): Whether to center the STFT. Defaults to True.
+            pad_mode (str, optional): Padding mode for STFT. Defaults to 'reflect'.
+            pgd_alpha (float, optional): Step size for PGD. Set to >0 to enable adversarial training. Defaults to 0.
+            pgd_eps (float, optional): Clips the filter perturbation in the range [1 - eps, 1 + eps]. Defaults to 0.
+            pgd_steps (int, optional): Number of PGD steps. Defaults to 0.
+            pgd_restarts (int, optional): Number of random restarts for PGD during training AND(!) testing.
+                Not recommended to be set > 1 for training, as training is substantially slowed down. Defaults to 0.
+            pgd_restarts_val (int, optional): Number of random restarts for PGD during validation. 
+                Set to > 0 to enable adversarial validation. WARNING: This will make your validation steps take a long time. Defaults to 0.
+            """
         super().__init__(*args, **kwargs)
         
         # Load Pretrained
@@ -50,8 +83,7 @@ class PasstAdv(L.LightningModule):
             
         self.mel = AugmentMelSTFT(n_mels=n_mels, sr=sr, win_length=win_length, hopsize=hop_size, n_fft=n_fft, freqm=freqm,
                                  timem=timem, htk=htk, f_min=f_min, f_max=f_max, window_fn=window_fn, power=power, 
-                                 normalized=normalized, center=center, pad_mode=pad_mode) #fmin_aug_range=10,
-                                 #fmax_aug_range=2000) #TODO: Extend to allow different window fn
+                                 normalized=normalized, center=center, pad_mode=pad_mode) 
         self.lr = lr
         self.loss = torch.nn.functional.cross_entropy
         self.pgd_alpha = pgd_alpha

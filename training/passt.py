@@ -8,6 +8,9 @@ import torch
 from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_score
 
 class Passt(L.LightningModule):
+    """This is the base class for PaSST. 
+    You will almost always want to use one of the subclasses like PaSSTAdv or PaSSTRandom.
+    See the docstrings for those classes for more information."""
     def __init__(self, 
                  pretrained_arch:str = "passt_s_swa_p16_128_ap476",
                  num_classes:int = 527,

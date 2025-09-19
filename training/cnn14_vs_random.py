@@ -1,19 +1,15 @@
-#from training.PaSST.passt import PaSST, PatchEmbed, get_model
 from training.PANNs.cnn14 import Transfer_Cnn14
 from training.PaSST.mel_configurable import AugmentMelSTFT
 from attacks.random_search import run_random_search_batched
 
 import numpy as np
 import pytorch_lightning as L
-from pytorch_lightning.cli import LightningCLI
 import torch
 from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_score
-import wandb
-from lightning.pytorch import loggers as pl_loggers
 
 class CNN14Random(L.LightningModule):
     def __init__(self, 
-                 pretrained_ckpt:str = '/hpcwork/wq656653/adv-filters/nnv_music/training/PANNs/Cnn14_mAP=0.431.pth',
+                 pretrained_ckpt:str = None,
                  num_classes:int = 527,
                  lr:float = 0.00002,
                  n_mels:int = 64,
@@ -31,12 +27,38 @@ class CNN14Random(L.LightningModule):
                  normalized:bool = False,
                  center:bool = True,
                  pad_mode:str = "reflect",
-                 pgd_alpha = 0, #NOTE: PGD disabled for training in CNN14
-                 pgd_eps = 0,
-                 pgd_steps = 0,
-                 pgd_restarts = 0,
-                 pgd_restarts_val = 0,
+                 rnd_eps = 0,
+                 rnd_steps = 0,
                  *args, **kwargs) -> None:
+        """
+        This class implements random search evaluation for CNN14.
+        It uses random search to create filter-based adversarial examples during testing.
+        Default parameters for learning rate and mel spectrogram calculation are taken from PANNs: 
+        https://github.com/qiuqiangkong/audioset_tagging_cnn
+        
+        Args:
+            pretrained_arch (str, optional): The weights of the pretrained CNN14 model to use. See README.MD.
+            num_classes (int, optional): Number of output classes. Defaults to 527 for AudioSet. 
+                Use 50 for ESC-50, 35 for SpeechCommands, and 11 for NSynth.
+            lr (float, optional): Learning rate. Defaults to 0.00002.
+            n_mels (int, optional): Number of mel bins. Defaults to 64.
+            sr (int, optional): Sample rate. Defaults to 32000.
+            win_length (int, optional): STFT window length. Defaults to 1024.
+            hop_size (int, optional): STFT hop size. Defaults to 320.
+            n_fft (int, optional): STFT FFT size. Defaults to 1024.
+            freqm (int, optional): Frequency masking parameter for SpecAugment. Defaults to 48.
+            timem (int, optional): Time masking parameter for SpecAugment. Defaults to 192.
+            htk (bool, optional): Use HTK mel scale. Defaults to True.
+            f_min (float, optional): Minimum frequency for mel spectrogram. Defaults to 50.0.
+            f_max (float, optional): Maximum frequency for mel spectrogram. Defaults to 14000.
+            window_fn (str, optional): Window function for STFT. Defaults to 'hann'.
+            power (int, optional): Power for spectrogram. Defaults to 2.
+            normalized (bool, optional): Whether to normalize the spectrogram. Defaults to False.
+            center (bool, optional): Whether to center the STFT. Defaults to True.
+            pad_mode (str, optional): Padding mode for STFT. Defaults to 'reflect'.
+            rnd_eps (float, optional): Clips the filter perturbation in the range [1 - eps, 1 + eps]. Defaults to 0.
+            rnd_steps (int, optional): Number of random search steps. Defaults to 0.
+            """
         super().__init__(*args, **kwargs)
         
         self.cnn14 = Transfer_Cnn14(classes_num=num_classes, freeze_base=False)
@@ -49,11 +71,8 @@ class CNN14Random(L.LightningModule):
                                  #fmax_aug_range=2000) #TODO: Extend to allow different window fn
         self.lr = lr
         self.loss = torch.nn.functional.cross_entropy
-        self.pgd_alpha = pgd_alpha
-        self.pgd_eps = pgd_eps
-        self.pgd_steps = pgd_steps
-        self.pgd_restarts = pgd_restarts
-        self.pgd_restarts_val = pgd_restarts_val
+        self.rnd_eps = rnd_eps
+        self.rnd_steps = rnd_steps
         
         self.y_hats = []
         self.y_trues = []
@@ -69,8 +88,7 @@ class CNN14Random(L.LightningModule):
         return x['clipwise_output']
 
     def training_step(self, batch, batch_idx):
-        raise NotImplementedError("Training step is disabled for random search evaluation.")
-
+        raise NotImplementedError("Training step is disabled for random search evaluation. Use CNN14Adv for training.")
 
     def test_step(self, batch, batch_idx):
         x, y = batch
@@ -80,8 +98,8 @@ class CNN14Random(L.LightningModule):
         rnd_res = run_random_search_batched(self,
                                     samples=x.clone(),
                                     labels=y.clone(),
-                                    eps=self.pgd_eps,
-                                    max_iters=self.pgd_steps * self.pgd_restarts,
+                                    eps=self.rnd_eps,
+                                    max_iters=self.rnd_steps,
                                     verbose=False)
         x_adv = rnd_res["perturbed_inputs"]
         y_hat_adv = self.forward(x_adv)

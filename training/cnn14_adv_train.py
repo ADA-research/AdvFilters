@@ -5,15 +5,12 @@ from attacks.filter_pgd import run_pgd_batched
 
 import numpy as np
 import pytorch_lightning as L
-from pytorch_lightning.cli import LightningCLI
 import torch
 from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_score
-import wandb
-from lightning.pytorch import loggers as pl_loggers
 
 class CNN14Adv(L.LightningModule):
     def __init__(self, 
-                 pretrained_ckpt:str = '/hpcwork/wq656653/adv-filters/nnv_music/training/PANNs/Cnn14_mAP=0.431.pth',
+                 pretrained_ckpt:str = None,
                  num_classes:int = 527,
                  lr:float = 0.00002,
                  n_mels:int = 64,
@@ -31,12 +28,46 @@ class CNN14Adv(L.LightningModule):
                  normalized:bool = False,
                  center:bool = True,
                  pad_mode:str = "reflect",
-                 pgd_alpha = 0, #NOTE: PGD disabled for training in CNN14
+                 pgd_alpha = 0,
                  pgd_eps = 0,
                  pgd_steps = 0,
                  pgd_restarts = 0,
                  pgd_restarts_val = 0,
                  *args, **kwargs) -> None:
+        """
+        This class implements adversarial training and evaluation for CNN14.
+        It uses Projected Gradient Descent (PGD) to create filter-based adversarial examples during training, validation and testing.
+        Default parameters for learning rate and mel spectrogram calculation are taken from PANNs: 
+        https://github.com/qiuqiangkong/audioset_tagging_cnn
+        
+        Args:
+            pretrained_arch (str, optional): The weights of the pretrained CNN14 model to use. See README.MD.
+            num_classes (int, optional): Number of output classes. Defaults to 527 for AudioSet. 
+                Use 50 for ESC-50, 35 for SpeechCommands, and 11 for NSynth.
+            lr (float, optional): Learning rate. Defaults to 0.00002.
+            n_mels (int, optional): Number of mel bins. Defaults to 64.
+            sr (int, optional): Sample rate. Defaults to 32000.
+            win_length (int, optional): STFT window length. Defaults to 1024.
+            hop_size (int, optional): STFT hop size. Defaults to 320.
+            n_fft (int, optional): STFT FFT size. Defaults to 1024.
+            freqm (int, optional): Frequency masking parameter for SpecAugment. Defaults to 48.
+            timem (int, optional): Time masking parameter for SpecAugment. Defaults to 192.
+            htk (bool, optional): Use HTK mel scale. Defaults to True.
+            f_min (float, optional): Minimum frequency for mel spectrogram. Defaults to 50.0.
+            f_max (float, optional): Maximum frequency for mel spectrogram. Defaults to 14000.
+            window_fn (str, optional): Window function for STFT. Defaults to 'hann'.
+            power (int, optional): Power for spectrogram. Defaults to 2.
+            normalized (bool, optional): Whether to normalize the spectrogram. Defaults to False.
+            center (bool, optional): Whether to center the STFT. Defaults to True.
+            pad_mode (str, optional): Padding mode for STFT. Defaults to 'reflect'.
+            pgd_alpha (float, optional): Step size for PGD. Set to >0 to enable adversarial training. Defaults to 0.
+            pgd_eps (float, optional): Clips the filter perturbation in the range [1 - eps, 1 + eps]. Defaults to 0.
+            pgd_steps (int, optional): Number of PGD steps. Defaults to 0.
+            pgd_restarts (int, optional): Number of random restarts for PGD during training AND(!) testing.
+                Not recommended to be set > 1 for training, as training is substantially slowed down. Defaults to 0.
+            pgd_restarts_val (int, optional): Number of random restarts for PGD during validation. 
+                Set to > 0 to enable adversarial validation. WARNING: This will make your validation steps take a long time. Defaults to 0.
+            """
         super().__init__(*args, **kwargs)
         
         self.cnn14 = Transfer_Cnn14(classes_num=num_classes, freeze_base=False)
@@ -45,8 +76,7 @@ class CNN14Adv(L.LightningModule):
             
         self.mel = AugmentMelSTFT(n_mels=n_mels, sr=sr, win_length=win_length, hopsize=hop_size, n_fft=n_fft, freqm=freqm,
                                  timem=timem, htk=htk, f_min=f_min, f_max=f_max, window_fn=window_fn, power=power, 
-                                 normalized=normalized, center=center, pad_mode=pad_mode) #fmin_aug_range=10,
-                                 #fmax_aug_range=2000) #TODO: Extend to allow different window fn
+                                 normalized=normalized, center=center, pad_mode=pad_mode)
         self.lr = lr
         self.loss = torch.nn.functional.cross_entropy
         self.pgd_alpha = pgd_alpha
