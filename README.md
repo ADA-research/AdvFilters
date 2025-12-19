@@ -51,3 +51,7 @@ python -m run fit --config './training/configs/base_config_esc50.yaml' \
  --data ESC50DataModule --data.dir your-dataset-path \
  --model PaSSTAdv --pgd_eps 0.5 --pgd_steps 10 --pgd_restarts 10
 ```
+
+## Demo
+Take a look at the `demos/demo.ipynb` notebook to see a minimal example of our filter-based PGD attack in action.  
+Trained models and some hand-picked adversarial examples can be downloaded [here.](https://rwth-aachen.sciebo.de/s/zEaaHkzQpTRZA8d)
