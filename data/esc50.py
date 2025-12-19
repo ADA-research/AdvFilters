@@ -86,10 +86,12 @@ class ESC50DataModule(L.LightningDataModule):
         self.mixup_kwargs = mixup_kwargs
         self.roll_kwargs = roll_kwargs
         self.gain_kwargs = gain_kwargs
+        self.class_map = None
             
     def setup(self, stage:str):
         # Load label data
         df = pd.read_csv(self.labels_csv)
+        self.class_map = {row["target"]: row["category"] for _, row in df.iterrows()}
         if stage == "test" or stage == "predict":
             test_wavs, test_labels = [], []
             test_df = df.loc[df.fold == self.test_fold]

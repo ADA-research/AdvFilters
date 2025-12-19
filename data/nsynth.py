@@ -13,20 +13,6 @@ import torchaudio
 from tqdm import tqdm
 from data.utils import pad_or_truncate, roll, gain_adjust, mixup
 
-CLASS_MAP = {
-    "bass": 0,
-    "keyboard": 1,
-    "guitar": 2,
-    "reed": 3,
-    "flute": 4,
-    "string": 5,
-    "vocal": 6,
-    "brass": 7,
-    "mallet": 8,
-    "organ": 9,
-    "synth_lead": 10
-}
-
 class NSynthDataset(Dataset):
     def __init__(self, wavs, labels,
                  sample_rate:int=32000, 
@@ -94,8 +80,22 @@ class NSynthDataModule(L.LightningDataModule):
         self.mixup_kwargs = mixup_kwargs
         self.roll_kwargs = roll_kwargs
         self.gain_kwargs = gain_kwargs
+        self.class_map = {
+            0: "bass",
+            1: "keyboard",
+            2: "guitar",
+            3: "reed",
+            4: "flute",
+            5: "string",
+            6: "vocal",
+            7: "brass",
+            8: "mallet",
+            9: "organ",
+            10: "synth_lead"
+        }
             
     def setup(self, stage:str):
+        class_map_inv = {v: k for k, v in self.class_map.items()}
         if stage == "test" or stage == "predict":
             with open(self.dir / "nsynth-test" / "examples.json", "r") as f:
                 test_data = json.load(f)
@@ -105,7 +105,7 @@ class NSynthDataModule(L.LightningDataModule):
                 test_wavs = p.map(_load_wav, tqdm(filepaths, "Loading test folds"))
             test_labels = []
             for _, label_str in label_dict.items():
-                label = CLASS_MAP[label_str]
+                label = class_map_inv[label_str]
                 test_labels.append(label)
             test_labels = one_hot(torch.tensor(test_labels), num_classes=11).float()
             self.test_dataset = NSynthDataset(
@@ -121,7 +121,7 @@ class NSynthDataModule(L.LightningDataModule):
                 train_wavs = list(tqdm(p.imap(_load_wav, filepaths), "Loading train folds", total=len(filepaths)))
             train_labels = []
             for _, label_str in tqdm(label_dict.items(), "Mapping labels"):
-                label = CLASS_MAP[label_str]
+                label = class_map_inv[label_str]
                 train_labels.append(label)
             train_labels = one_hot(torch.tensor(train_labels), num_classes=11).float()
             print("Creating dataset object")
@@ -142,7 +142,7 @@ class NSynthDataModule(L.LightningDataModule):
                 val_wavs = p.map(_load_wav, tqdm(filepaths, "Loading validation folds"))
             val_labels = []
             for _, label_str in label_dict.items():
-                label = CLASS_MAP[label_str]
+                label = class_map_inv[label_str]
                 val_labels.append(label)
             val_labels = one_hot(torch.tensor(val_labels), num_classes=11).float()
             self.val_dataset = NSynthDataset(

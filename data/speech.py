@@ -123,6 +123,7 @@ class SpeechCommandsDataModule(L.LightningDataModule):
         self.roll_kwargs = roll_kwargs
         self.gain_kwargs = gain_kwargs
         self.debug = debug
+        self.class_map = {i: word for i, word in enumerate(WORDS)}
             
     def setup(self, stage:str):
         if not os.path.exists(self.dir / "train_list.txt"):
@@ -140,7 +141,7 @@ class SpeechCommandsDataModule(L.LightningDataModule):
             with open(self.dir / 'train_list.txt', 'w') as f:
                 for file in train_files:
                     f.write(str(file) + '\n')
-                    
+        class_map_inv = {v: k for k, v in self.class_map.items()}   
         if stage == "fit" or stage == "validate": 
             # Train set
             with open(self.dir / 'train_list.txt', 'r') as f:
@@ -152,8 +153,8 @@ class SpeechCommandsDataModule(L.LightningDataModule):
             with Pool(max(self.num_workers, 1)) as p:
                 train_wavs = p.map(_load_wav, tqdm(train_files, "Loading training files"))
             labels = [file.parent.name for file in train_files]
-            labels = [WORDS.index(label) for label in labels]
-            train_labels_enc = one_hot(torch.tensor(labels), num_classes=len(WORDS))
+            labels = [class_map_inv[label] for label in labels]
+            train_labels_enc = one_hot(torch.tensor(labels), num_classes=len(self.class_map))
             self.train_dataset = SpeechCommandsDataset(
                 torch.tensor(train_wavs, dtype=torch.float32),
                 torch.tensor(train_labels_enc, dtype=torch.float32),
@@ -172,8 +173,8 @@ class SpeechCommandsDataModule(L.LightningDataModule):
             with Pool(max(self.num_workers, 1)) as p:
                 val_wavs = p.map(_load_wav, tqdm(val_files, "Loading validation files"))
             labels = [file.parent.name for file in val_files]
-            labels = [WORDS.index(label) for label in labels]
-            val_labels_enc = one_hot(torch.tensor(labels), num_classes=len(WORDS))
+            labels = [class_map_inv[label] for label in labels]
+            val_labels_enc = one_hot(torch.tensor(labels), num_classes=len(self.class_map))
             self.val_dataset = SpeechCommandsDataset(
                 torch.tensor(val_wavs, dtype=torch.float32),
                 torch.tensor(val_labels_enc, dtype=torch.float32)
@@ -188,8 +189,8 @@ class SpeechCommandsDataModule(L.LightningDataModule):
             with Pool(max(self.num_workers, 1)) as p:
                 test_wavs = p.map(_load_wav, tqdm(test_files, "Loading test files"))
             labels = [file.parent.name for file in test_files]
-            labels = [WORDS.index(label) for label in labels]
-            test_labels_enc = one_hot(torch.tensor(labels), num_classes=len(WORDS))
+            labels = [class_map_inv[label] for label in labels]
+            test_labels_enc = one_hot(torch.tensor(labels), num_classes=len(self.class_map))
             self.test_dataset = SpeechCommandsDataset(
                 torch.tensor(test_wavs, dtype=torch.float32),
                 torch.tensor(test_labels_enc, dtype=torch.float32)
