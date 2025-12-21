@@ -53,5 +53,5 @@ python -m run fit --config './training/configs/base_config_esc50.yaml' \
 ```
 
 ## Demo
-Take a look at the `demos/demo.ipynb` notebook to see a minimal example of our filter-based PGD attack in action.  
+Take a look at `notebooks/demo.ipynb` to see a minimal example of our filter-based PGD attack in action.  
 Trained models and some hand-picked adversarial examples can be downloaded [here.](https://rwth-aachen.sciebo.de/s/zEaaHkzQpTRZA8d)
